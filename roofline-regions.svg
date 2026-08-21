@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="770" viewBox="0 0 1180 770" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei','Helvetica Neue',Helvetica,sans-serif">
+
+  <!-- ========== defs: hatch patterns + arrow markers ========== -->
+  <defs>
+    <pattern id="pMem" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="9" stroke="#5F8A4C" stroke-width="1.7" opacity="0.45"/>
+    </pattern>
+    <pattern id="pComp" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+      <line x1="0" y1="0" x2="0" y2="9" stroke="#B75B33" stroke-width="1.7" opacity="0.45"/>
+    </pattern>
+    <pattern id="pBoth" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M0 0 L8 8 M8 0 L0 8" stroke="#7A6A9B" stroke-width="1.25" opacity="0.45"/>
+    </pattern>
+    <marker id="ax" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8A8172"/>
+    </marker>
+  </defs>
+
+  <rect width="1180" height="770" fill="#FFFFFF"/>
+
+  <!-- ========== title ========== -->
+  <text x="60" y="46" font-size="20" font-weight="700" fill="#2E2B26">Roofline 的四个区域：可达 / 只差带宽 / 只差算力 / 两者都差</text>
+  <text x="60" y="72" font-size="12.5" fill="#6E675C">I（Arithmetic Intensity，算术强度）与 ridge point 的比较只决定「哪个屋顶更近」；实测点到屋顶的距离才决定「是否真的打满」</text>
+  <text x="60" y="98" font-size="11" fill="#8A8172">记号：<tspan font-family="'SF Mono',Menlo,Consolas,monospace" fill="#4A443C">I</tspan> = arithmetic intensity（算术强度，工作负载属性，即本图横轴）　·　<tspan font-family="'SF Mono',Menlo,Consolas,monospace" fill="#4A443C">I_ridge</tspan> = P_peak / BW_peak = 硬件 ops:byte 比（绿、橙两条屋顶的交点，硬件属性）</text>
+
+  <!-- ========== region fills ========== -->
+  <!-- attainable: below min(bandwidth ceiling, compute ceiling) -->
+  <path d="M120 640 L435 283 L820 283 L820 640 Z" fill="#E7EBE0"/>
+
+  <!-- unattainable, bandwidth constraint only: left of ridge, between green ray and P_peak -->
+  <path d="M120 640 L435 283 L120 283 Z" fill="#DDE9D6"/>
+  <path d="M120 640 L435 283 L120 283 Z" fill="url(#pMem)"/>
+
+  <!-- unattainable, compute constraint only: right of ridge, between P_peak and green ray extension -->
+  <path d="M435 283 L820 283 L820 130 L570 130 Z" fill="#F5DECE"/>
+  <path d="M435 283 L820 283 L820 130 L570 130 Z" fill="url(#pComp)"/>
+
+  <!-- unattainable, both constraints: above max(bandwidth ceiling, compute ceiling) -->
+  <path d="M120 283 L435 283 L570 130 L120 130 Z" fill="#E4DEEC"/>
+  <path d="M120 283 L435 283 L570 130 L120 130 Z" fill="url(#pBoth)"/>
+
+  <!-- ========== axes ========== -->
+  <line x1="435" y1="640" x2="435" y2="283" stroke="#A9A192" stroke-width="1" stroke-dasharray="3 4"/>
+  <path d="M120 645 L120 118" stroke="#8A8172" stroke-width="1.6" fill="none" marker-end="url(#ax)"/>
+  <path d="M113 640 L828 640" stroke="#8A8172" stroke-width="1.6" fill="none" marker-end="url(#ax)"/>
+  <text x="88" y="385" font-size="12.5" fill="#4A443C" text-anchor="middle" transform="rotate(-90 88 385)">Performance (FLOP/s)</text>
+  <text x="470" y="696" font-size="12.5" fill="#4A443C" text-anchor="middle"><tspan font-family="'SF Mono',Menlo,Consolas,monospace" font-weight="700">I</tspan> = Arithmetic Intensity (FLOP/byte)</text>
+
+  <line x1="113" y1="283" x2="120" y2="283" stroke="#8A8172" stroke-width="1.6"/>
+  <text x="108" y="287" font-size="11" font-family="'SF Mono',Menlo,Consolas,monospace" fill="#4A443C" text-anchor="end">P_peak</text>
+  <line x1="435" y1="640" x2="435" y2="647" stroke="#8A8172" stroke-width="1.6"/>
+  <text x="435" y="666" font-size="10.5" font-family="'SF Mono',Menlo,Consolas,monospace" fill="#4A443C" text-anchor="middle">I_ridge = P_peak / BW_peak</text>
+
+  <!-- ========== ceiling boundaries ========== -->
+  <!-- dashed: extensions that bound the "both" region -->
+  <line x1="120" y1="283" x2="435" y2="283" stroke="#B75B33" stroke-width="1.8" stroke-dasharray="7 5" opacity="0.75"/>
+  <line x1="435" y1="283" x2="570" y2="130" stroke="#5F8A4C" stroke-width="1.8" stroke-dasharray="7 5" opacity="0.75"/>
+  <!-- solid: the actual roofline -->
+  <line x1="120" y1="640" x2="435" y2="283" stroke="#5F8A4C" stroke-width="3.4"/>
+  <line x1="435" y1="283" x2="820" y2="283" stroke="#B75B33" stroke-width="3.4"/>
+
+  <!-- ========== slope triangle: the bandwidth ceiling's slope IS BW_peak ========== -->
+  <path d="M148 608 L204 608 L204 545" fill="none" stroke="#3F6630" stroke-width="1.3" stroke-dasharray="3 3"/>
+  <path d="M196 600 L204 600 L204 608" fill="none" stroke="#3F6630" stroke-width="1"/>
+  <text x="176" y="623" font-size="10.5" font-family="'SF Mono',Menlo,Consolas,monospace" fill="#3F6630" text-anchor="middle">ΔI</text>
+  <text x="211" y="577" font-size="10.5" font-family="'SF Mono',Menlo,Consolas,monospace" fill="#3F6630">ΔP</text>
+  <text x="250" y="610" font-size="10.5" font-family="'SF Mono',Menlo,Consolas,monospace" font-weight="700" fill="#3F6630">k = ΔP / ΔI = BW_peak</text>
+  <text x="250" y="626" font-size="10" fill="#6E675C">绿线斜率即峰值带宽（byte/s）</text>
+
+  <!-- ========== region labels ========== -->
+  <!-- both bound -->
+  <text x="285" y="190" font-size="13" font-weight="700" fill="#544477" text-anchor="middle">不可达 · 同时超两个上限</text>
+  <text x="285" y="212" font-size="11" font-family="'SF Mono',Menlo,Consolas,monospace" letter-spacing="1.6" fill="#7A6A9B" text-anchor="middle">BOTH BOUND</text>
+  <text x="285" y="232" font-size="11" fill="#6E675C" text-anchor="middle">带宽与算力必须同时提升</text>
+
+  <!-- compute bound only -->
+  <text x="665" y="195" font-size="13" font-weight="700" fill="#8E4526" text-anchor="middle">不可达 · 仅超算力上限</text>
+  <text x="665" y="217" font-size="11" font-family="'SF Mono',Menlo,Consolas,monospace" letter-spacing="1.6" fill="#B75B33" text-anchor="middle">COMPUTE BOUND</text>
+  <text x="665" y="237" font-size="11" fill="#6E675C" text-anchor="middle">带宽还有余量，只需更高算力</text>
+
+  <!-- memory bound only -->
+  <text x="245" y="326" font-size="13" font-weight="700" fill="#3F6630" text-anchor="middle">不可达 · 仅超带宽上限</text>
+  <text x="245" y="348" font-size="11" font-family="'SF Mono',Menlo,Consolas,monospace" letter-spacing="1.6" fill="#5F8A4C" text-anchor="middle">MEMORY BOUND</text>
+  <text x="245" y="368" font-size="11" fill="#6E675C" text-anchor="middle">算力还有余量，只需更高带宽</text>
+
+  <!-- attainable -->
+  <text x="808" y="622" font-size="12" fill="#7D8570" text-anchor="end">可达区 · ATTAINABLE</text>
+
+  <!-- ========== on-the-line labels ========== -->
+  <text x="258" y="463" font-size="12" font-weight="600" fill="#3F6630" text-anchor="middle" transform="rotate(-48.6 258 463)">带宽打满 · 算力未打满</text>
+  <text x="648" y="303" font-size="12" font-weight="600" fill="#8E4526" text-anchor="middle">算力打满 · 带宽未打满</text>
+
+  <!-- ========== ridge point ========== -->
+  <path d="M441 290 L479 324" stroke="#5C554A" stroke-width="1.1" fill="none"/>
+  <circle cx="435" cy="283" r="6.5" fill="#2E2B26" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="486" y="330" font-size="12" font-weight="700" fill="#2E2B26">Ridge point</text>
+  <text x="486" y="347" font-size="11" fill="#6E675C">唯一同时打满带宽与算力的点</text>
+
+  <!-- ========== example measured point ========== -->
+  <line x1="330" y1="503" x2="330" y2="289" stroke="#5C554A" stroke-width="1.2" stroke-dasharray="2 4"/>
+  <circle cx="330" cy="402" r="3.5" fill="none" stroke="#3F6630" stroke-width="1.6"/>
+  <circle cx="330" cy="283" r="3.5" fill="none" stroke="#8E4526" stroke-width="1.6"/>
+  <circle cx="330" cy="507" r="6" fill="#7D8570" stroke="#2E2B26" stroke-width="1.6"/>
+  <text x="346" y="494" font-size="12" font-weight="700" fill="#2E2B26">典型实测点</text>
+  <text x="346" y="512" font-size="10.5" font-family="'SF Mono',Menlo,Consolas,monospace" fill="#8E4526">compute_util = 2.6 / 7.00 = 37%</text>
+  <text x="346" y="528" font-size="10.5" font-family="'SF Mono',Menlo,Consolas,monospace" fill="#3F6630">bw_util      = 2.6 / 4.67 = 56%</text>
+  <text x="346" y="548" font-size="11" fill="#6E675C">两者都没打满 → latency bound</text>
+
+  <!-- ========== legend ========== -->
+  <text x="858" y="152" font-size="12.5" font-weight="700" fill="#2E2B26">图例 <tspan font-size="10.5" font-weight="400" fill="#8A8172" letter-spacing="1.4">LEGEND</tspan></text>
+
+  <rect x="858" y="164" width="20" height="20" fill="#E7EBE0" stroke="#C4C8B8"/>
+  <text x="888" y="174" font-size="11.5" font-weight="600" fill="#2E2B26">可达区 ATTAINABLE</text>
+  <text x="888" y="190" font-size="10.5" fill="#6E675C">屋顶之下，物理上真的能跑到</text>
+
+  <rect x="858" y="208" width="20" height="20" fill="#DDE9D6" stroke="#C4C8B8"/>
+  <rect x="858" y="208" width="20" height="20" fill="url(#pMem)"/>
+  <text x="888" y="218" font-size="11.5" font-weight="600" fill="#3F6630">不可达 · MEMORY BOUND</text>
+  <text x="888" y="234" font-size="10.5" fill="#6E675C">只超带宽上限，算力还有余量</text>
+
+  <rect x="858" y="252" width="20" height="20" fill="#F5DECE" stroke="#C4C8B8"/>
+  <rect x="858" y="252" width="20" height="20" fill="url(#pComp)"/>
+  <text x="888" y="262" font-size="11.5" font-weight="600" fill="#8E4526">不可达 · COMPUTE BOUND</text>
+  <text x="888" y="278" font-size="10.5" fill="#6E675C">只超算力上限，带宽还有余量</text>
+
+  <rect x="858" y="296" width="20" height="20" fill="#E4DEEC" stroke="#C4C8B8"/>
+  <rect x="858" y="296" width="20" height="20" fill="url(#pBoth)"/>
+  <text x="888" y="306" font-size="11.5" font-weight="600" fill="#544477">不可达 · BOTH BOUND</text>
+  <text x="888" y="322" font-size="10.5" fill="#6E675C">两个上限同时被超过</text>
+
+  <line x1="858" y1="352" x2="880" y2="352" stroke="#5F8A4C" stroke-width="3.4"/>
+  <text x="888" y="356" font-size="11.5" fill="#2E2B26">带宽屋顶 · 线上 = 带宽打满</text>
+
+  <line x1="858" y1="378" x2="880" y2="378" stroke="#B75B33" stroke-width="3.4"/>
+  <text x="888" y="382" font-size="11.5" fill="#2E2B26">算力屋顶 · 线上 = 算力打满</text>
+
+  <line x1="858" y1="404" x2="880" y2="404" stroke="#8A8172" stroke-width="1.8" stroke-dasharray="7 5"/>
+  <text x="888" y="408" font-size="11.5" fill="#2E2B26">上限延长线 · 不可达区分界</text>
+
+  <circle cx="869" cy="430" r="5.5" fill="#2E2B26"/>
+  <text x="888" y="434" font-size="11.5" fill="#2E2B26">Ridge point · 唯一双打满</text>
+
+  <!-- ========== key identity note ========== -->
+  <rect x="858" y="452" width="302" height="270" rx="8" fill="#F1EDE2" stroke="#D8D2C4"/>
+
+  <text x="876" y="478" font-size="12.5" font-weight="700" fill="#2E2B26">定义　<tspan font-size="10.5" font-weight="400" fill="#8A8172">P = 实测性能（FLOP/s），P / I = 实测带宽</tspan></text>
+
+  <text x="876" y="502" font-size="10.5" font-family="'SF Mono',Menlo,Consolas,monospace" fill="#8E4526">compute_util = P / P_peak</text>
+  <text x="876" y="518" font-size="10" fill="#6E675C">算力利用率 = 实测 FLOP/s ÷ 峰值 FLOP/s</text>
+
+  <text x="876" y="542" font-size="10.5" font-family="'SF Mono',Menlo,Consolas,monospace" fill="#3F6630">bw_util = (P / I) / BW_peak</text>
+  <text x="876" y="558" font-size="10" fill="#6E675C">带宽利用率 = 实测带宽 ÷ 峰值带宽</text>
+
+  <text x="876" y="578" font-size="10" fill="#8A8172">两者都是 0~100% 的比例，不是峰值本身</text>
+
+  <line x1="876" y1="590" x2="1142" y2="590" stroke="#D8D2C4" stroke-width="1"/>
+
+  <text x="876" y="612" font-size="12.5" font-weight="700" fill="#2E2B26">关键恒等式</text>
+  <text x="876" y="636" font-size="11" font-family="'SF Mono',Menlo,Consolas,monospace" font-weight="700" fill="#544477">compute_util / bw_util = I / I_ridge</text>
+  <text x="876" y="660" font-size="11.5" fill="#4A443C">该比值与实测性能 P 无关。只要 I &gt; I_ridge，</text>
+  <text x="876" y="678" font-size="11.5" fill="#4A443C">算力利用率恒高于带宽利用率，compute 就是</text>
+  <text x="876" y="696" font-size="11.5" fill="#4A443C">「更近」的那个屋顶。但「更近」≠「已经贴</text>
+  <text x="876" y="714" font-size="11.5" fill="#4A443C">到屋顶」，后者必须看实测 SM% / DRAM%。</text>
+
+  <!-- ========== footer ========== -->
+  <text x="120" y="736" font-size="11" fill="#8A8172">注：此处用线性坐标；换成对数坐标后带宽屋顶变为斜率 1 的直线，但四个区域的划分完全相同。</text>
+</svg>
