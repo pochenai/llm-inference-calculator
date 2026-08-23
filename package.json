@@ -1,0 +1,18 @@
+{
+  "name": "llm-inference-calculator",
+  "version": "0.1.0",
+  "description": "Static performance model for LLM inference: VRAM feasibility + ideal TTFT/TPOT/throughput",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc -p tsconfig.check.json",
+    "test": "vitest run",
+    "demo": "tsc examples/demo.ts src/core/*.ts --outDir dist-demo --rootDir . --module esnext --target es2022 --moduleResolution bundler --strict --skipLibCheck && node dist-demo/examples/demo.js"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

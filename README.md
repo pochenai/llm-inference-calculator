@@ -13,6 +13,8 @@ LLM 推理的静态性能模型。给定一组「模型 + GPU + 互连带宽 + �
 2. **量化单一精度**：整个模型的所有权重量化到同一精度（FP4 / FP8 / FP16 / FP32 之一），用单一的每参数字节数描述。Key-Value（KV）cache 的精度作为独立参数，可选与权重不同。
 3. **单 batch 一次流过**：prefill 和 decode 严格串行，不存在两阶段混跑占用的问题（详见附录对旧问题 1 的归档）。
 4. **多节点结果不追求精确**：单节点做严格校准，多节点只加一个低阶校正因子（见第八节）。
+5. **流水线（PP）bubble 不建模**：真实调度会用更细的 microbatch 切分、交错执行、chunked prefill 等手段大幅压缩流水线填充/排空空洞，`(B+pp-1)/B` 这类悲观估计会明显高估。理想值模型假设 bubble ≈ 0；只把阶段间 P2P 激活搬运计入 TTFT（见通信代价通用模型）。
+6. **激活显存粗估**：开 FlashAttention 时 activations 近似为单个 `O(N×h)` 残差 buffer；关 FlashAttention 时再叠加 `N²` 注意力分数矩阵（真实的 OOM 悬崖）。不精确建模真实 buffer 个数与碎片——相对权重 + KV，激活是小项；与「调度低效」不同，激活是真实物理占用，理想模型保留其下界而非置零。
 
 ## 二、建模主脉络：两阶段 + 四条资源轴
 
@@ -195,7 +197,7 @@ Tensor Parallelism（TP，张量并行）、Pipeline Parallelism（PP，流水�
 | 并行方式 | 切分什么（显存收益） | 添加什么通信（代价） | 适用场景 |
 |---|---|---|---|
 | **TP**（size = t） | 权重、KV cache、激活 ÷ t | 每层 2 次 all-reduce，消息量 ∝ `B × N × h` | 仅限节点内（吃高带宽）；prefill / 大 batch 收益大 |
-| **PP**（size = p） | 权重、KV cache ÷ p（按层切） | 阶段间点对点传激活，量小；但有 bubble（空洞）`(p-1)/m`（m = microbatch 数） | 跨节点便宜；m 小时 bubble 伤延迟 |
+| **PP**（size = p） | 权重、KV cache ÷ p（按层切） | 阶段间点对点传激活（见通信代价通用模型） | 跨节点便宜；流水线 bubble 不建模（见假设 5） |
 | **EP**（size = e） | 专家权重 ÷ e（与 TP 的复合见下方协作规则） | 每个 MoE 层 2 次 all-to-all（dispatch + combine，分发 + 合并） | 仅 MoE 模型 |
 | **DP**（size = d） | 不切分（权重全量复制） | 推理期无通信 | 纯吞吐 × d |
 | **PD 分离** | 按阶段切分，不按模型切分 | KV cache 从 prefill 池搬到 decode 池，耗时 `KV_total / BW_节点间` | 让两个池各自选最优并行与硬件配置 |
@@ -227,6 +229,8 @@ TP * EP * PP * DP = N_gpu
 - **拉高 TP**：非专家权重切得碎、省显存，但 all-reduce 横跨所有卡，吃带宽、仅限节点内
 - **拉高 EP**：all-to-all 通信更省，但非专家权重在各组复制、吃显存
 - **混合（TP=2, EP=4）**：两者折中
+
+**EP 与延迟的关系（易误解）**：固定卡数下，每卡专家字节只取决于乘积 `TP×EP`，EP 切多少并不比 TP 更能降每卡字节；且非专家权重只有 TP 切、EP 复制，所以同卡数下 TP 反而 TPOT 更低。EP 的真正价值是**规模扩展**：TP 被单节点卡死（`TP ≤ 节点内卡数`），模型大到一个节点摊不薄每卡字节时，只能靠 EP 把专家切到别的节点、继续用更多卡摊薄每卡读取、压低 TPOT。即「EP 管扩展、不管每卡效率」，代价是跨节点 all-to-all 更慢；且加卡降 TPOT 收益递减，最终撞通信墙。
 
 典型错误：指定 EP=8 后仍按默认 TP=N_gpu 计算，乘积超出卡数（声称 64 卡实际 8 卡），等于把专家权重除了两遍——显存被低估 EP 倍、通信被重复计。即「不要 TP=8 再叠 EP=8」这条守卫。
 
@@ -290,7 +294,7 @@ T_ar = n_ar * ( 2(t-1)/t * msg / BW + α * 2(t-1) )
          └ 每层 all-reduce 次数 = 2（attention 输出后 + MLP 输出后）
 ```
 - **EP（all-to-all）**：每个 MoE 层 dispatch + combine 两次，带宽项与 α 项同构
-- **PP**：阶段间点对点传激活，消息量小，通常可忽略
+- **PP**：阶段间点对点传激活。batch 按 B 个 microbatch 流水，每条阶段间链路要搬完全部 B 条、每条消息 = 一条序列的隐藏态 `N_in × h × b_act`；`(pp-1)` 条链路并行，故一阶 makespan ≈ `B × N_in × h × b_act / BW`。带宽按「单节点→节点内、多节点→跨节点」启发式选；流水线填充/排空（bubble）不建模（见假设 5），每跳 P2P 延迟为低阶项略去
 - **PD 分离**：KV cache 一次性搬运，`KV_total / BW_节点间`
 
 两个物理细节：
@@ -316,7 +320,7 @@ T_compute = FLOPs_prefill / (N_gpu * Peak_FLOPs * MFU)
                             └────────────┬────────────┘
                                          └ 集群有效算力（卡数 × 单卡峰值 × 利用率）
 
-T_comm = TP all-reduce per layer + PP bubble
+T_comm = TP all-reduce per layer + EP all-to-all + PP P2P
 TTFT   = T_compute + non_overlapped_comm (+ KV transfer if PD-disaggregated)
 ```
 
@@ -339,7 +343,7 @@ T_step = bytes_per_step / (BW_eff * group_size) + T_tp_comm
 TPOT = ITL = T_step
 ```
 
-**MoE 注意**：第一项不是全量权重。非专家权重（attention、shared expert、embedding）每步必读；专家权重的读取量取决于 batch 内的专家覆盖率——B 小时只读 top-k 命中的专家，B 增大时趋近全量专家集合。dense 模型无此问题，`W_read_per_step = W_bytes` 恒成立。
+**MoE 注意**：第一项不是全量权重。非专家权重（attention、shared expert、embedding）每步必读；专家权重的读取量取决于 batch 内的专家覆盖率 `1 - (1 - k/E)^B`——B 小时只读 top-k 命中的专家，B 增大时趋近全量专家集合。这个覆盖率是**每步读取量的硬下界，流水线降不掉**：本步必须给全部 B 个 token 算完 FFN 才能进入下一步，被命中的专家至少要读一次；重叠只能藏延迟、减不了字节，而 decode 恰恰被字节（带宽）卡住。唯一能低于它的是跨 step 专家缓存（依赖路由局部性），v1 不建模、按每步全量重读。dense 模型无此问题，`W_read_per_step = W_bytes` 恒成立。
 
 **TP 注意**：decode 阶段 TP 的 all-reduce 消息很小（`B × h`），此时通信是延迟受限而非带宽受限——这正是「TP 在小 batch 下反而亏」的来源。而 TP 对 decode 的收益在于聚合多卡 HBM 带宽，两头对冲后是否划算由模型自动算出。
 
