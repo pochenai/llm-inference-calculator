@@ -8,7 +8,8 @@
     "build": "tsc",
     "typecheck": "tsc -p tsconfig.check.json",
     "test": "vitest run",
-    "demo": "tsc examples/demo.ts src/core/*.ts --outDir dist-demo --rootDir . --module esnext --target es2022 --moduleResolution bundler --strict --skipLibCheck && node dist-demo/examples/demo.js"
+    "demo": "tsc examples/demo.ts src/core/*.ts --outDir dist-demo --rootDir . --module esnext --target es2022 --moduleResolution bundler --strict --skipLibCheck && node dist-demo/examples/demo.js",
+    "calibrate": "tsc examples/calibrate.ts src/core/*.ts src/data/*.ts --outDir dist-demo --rootDir . --module esnext --target es2022 --moduleResolution bundler --strict --skipLibCheck && node dist-demo/examples/calibrate.js"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

@@ -15,6 +15,7 @@ LLM 推理的静态性能模型。给定一组「模型 + GPU + 互连带宽 + �
 4. **多节点结果不追求精确**：单节点做严格校准，多节点只加一个低阶校正因子（见第八节）。
 5. **流水线（PP）bubble 不建模**：真实调度会用更细的 microbatch 切分、交错执行、chunked prefill 等手段大幅压缩流水线填充/排空空洞，`(B+pp-1)/B` 这类悲观估计会明显高估。理想值模型假设 bubble ≈ 0；只把阶段间 P2P 激活搬运计入 TTFT（见通信代价通用模型）。
 6. **激活显存粗估**：开 FlashAttention 时 activations 近似为单个 `O(N×h)` 残差 buffer；关 FlashAttention 时再叠加 `N²` 注意力分数矩阵（真实的 OOM 悬崖）。不精确建模真实 buffer 个数与碎片——相对权重 + KV，激活是小项；与「调度低效」不同，激活是真实物理占用，理想模型保留其下界而非置零。
+7. **α（小消息集合通信延迟）的语义与取值**：α 是**单次集合调用**（per-call）的固定总延迟——一次 all-reduce 内部所有轮、所有 hop 已含在内，不是 per-hop；hop 相关的数据量由带宽项 `2(t-1)/t` 负责。默认 intra 0.01 ms / inter 0.03 ms，与实测 NCCL 小消息 all-reduce 总量 6–11 μs 同量级（不采用 tps 式 per-hop × hop ≈ 112 μs 的高估口径）。α 只在对应 `*CommOverlap < 1` 时生效（decode 小 batch 的集合通信无法重叠）。不从 batch=1 推理延迟反推 α（混有小 GEMM kernel 延迟，会高估一个数量级）。
 
 ## 二、建模主脉络：两阶段 + 四条资源轴
 
@@ -393,6 +394,8 @@ throughput = B * N_out / E2E_latency      # output tokens per second
 边界说明：校准只接受硬件 / 物理层面的修正，**不引入 vLLM / SGLang 等框架的引擎级校准因子**——它们的稳态吞吐来自 continuous batching 前提，与本模型的单 batch 假设不可比（见附录）。GPU 数据中即便带有实测利用率字段，理想值模式下也不采用。
 
 单节点用实测数据拟合这几个常数即可，参数空间小，校准是良态问题。多节点不追求精确，只额外引入一个关于通信量 / 跳数的校正因子，形式限于线性、最多二次模型（与第一节简化假设 4 对应）。
+
+公开实测数据已收集在 [`data/calibration/`](./data/calibration/)（NVIDIA 系列，含来源链接、协议分类与初步对照比值）；对照时只认延迟协议（`LAT`，低并发实测），吞吐协议（`THR`，continuous batching 打满）只能当上界参考。
 
 ## 十、技术方案与代码结构
 

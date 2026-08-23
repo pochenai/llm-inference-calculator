@@ -43,6 +43,15 @@ export const IDEAL: Calibration = {
   alphaInterMs: 0,
 };
 
+// Best-guess per-call small-message collective latency (ms) for when the target
+// machine has not been micro-benchmarked. Intra (NVLink, ~8 GPUs) ~10 us;
+// inter (InfiniBand) ~30 us. Ranges & method: data/benchmarks/README.md.
+// Caveat: alpha only contributes when the matching *CommOverlap < 1 (e.g. decode,
+// where small-batch collectives are not overlapped). Do NOT derive alpha from
+// batch-1 decode TBT (it is contaminated by small-GEMM kernel latency).
+export const DEFAULT_ALPHA_INTRA_MS = 0.01;
+export const DEFAULT_ALPHA_INTER_MS = 0.03;
+
 // Exposed (non-overlapped) fraction of a communication interval.
 // overlap = 1 means fully hidden; overlap = 0 means fully exposed.
 export function exposedComm(commTime: number, overlap: number): number {
