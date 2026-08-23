@@ -3,18 +3,18 @@
 // evaluate() is the public entry point and NEVER throws: it returns a
 // Result<EvaluationResult> so a UI can branch on r.ok and render r.error.
 
-import type { Calibration } from './calibration.js';
-import { IDEAL } from './calibration.js';
-import { CalcError, err, ok } from './errors.js';
-import type { Result } from './errors.js';
-import type { ParallelLayout, SystemSpec } from './types.js';
-import { deriveConstants } from './model.js';
-import { resolveInterconnect } from './hardware.js';
-import { validateLayout } from './layout.js';
-import type { VramBreakdown } from './memory.js';
-import { vramBreakdown } from './memory.js';
-import type { DecodeDetail, PrefillDetail } from './latency.js';
-import { buildCommModel, decodeStepTime, prefillTime } from './latency.js';
+import type { Calibration } from './calibration';
+import { IDEAL } from './calibration';
+import { CalcError, err, ok } from './errors';
+import type { Result } from './errors';
+import type { ParallelLayout, SystemSpec } from './types';
+import { deriveConstants } from './model';
+import { resolveInterconnect } from './hardware';
+import { validateLayout } from './layout';
+import type { VramBreakdown } from './memory';
+import { vramBreakdown } from './memory';
+import type { DecodeDetail, PrefillDetail } from './latency';
+import { buildCommModel, decodeStepTime, prefillTime } from './latency';
 
 export interface EvaluationResult {
   feasible: boolean;

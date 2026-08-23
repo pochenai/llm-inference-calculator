@@ -10,7 +10,7 @@
 //   THR - throughput protocol, continuous-batching saturated steady state; only an
 //         upper bound, compared against the decode roofline ceiling.
 
-import type { ParallelLayout, QuantPrecision } from '../core/types.js';
+import type { ParallelLayout, QuantPrecision } from '../../core/types';
 
 export interface MeasuredMetrics {
   ttftMs?: number;
@@ -331,7 +331,7 @@ export const MEASUREMENTS: Measurement[] = [
     protocol: 'THR',
     source: 'TensorRT-LLM Performance Overview',
     sourceUrl: 'https://nvidia.github.io/TensorRT-LLM/performance/perf-overview.html',
-    modelId: 'llama3_1_405b',
+    modelId: 'llama3_405b',
     gpuId: 'h100_sxm',
     gpuCount: 8,
     gpusPerNode: 8,

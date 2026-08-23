@@ -1,7 +1,7 @@
 // Hardware specs and interconnect resolution.
 
-import type { GpuSpec, Interconnect, QuantPrecision } from './types.js';
-import { CalcError } from './errors.js';
+import type { GpuSpec, Interconnect, QuantPrecision } from './types';
+import { CalcError } from './errors';
 
 // PCIe fallback when a GPU has no NVLink. Conservative Gen4 x16 figure.
 export const PCIE_BW_GBPS = 32;

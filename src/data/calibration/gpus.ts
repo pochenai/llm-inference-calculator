@@ -1,7 +1,7 @@
 // GPU spec catalog used by the benchmark comparison. English comments.
 // Values are the datasheet / commonly-cited numbers; re-verify before relying on them.
 
-import type { GpuSpec } from '../core/types.js';
+import type { GpuSpec } from '../../core/types';
 
 export const GPUS: Record<string, GpuSpec> = {
   h100_sxm: {

@@ -46,6 +46,7 @@ export interface ModelSpec {
   globalKvHeads?: number; // KV heads of global layers when they differ from local
   globalHeadDim?: number;
   maxCtx: number;
+  hf?: string; // HuggingFace model URL
 }
 
 export interface GpuSpec {

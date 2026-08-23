@@ -1,14 +1,14 @@
 // Latency model: TTFT (prefill, compute axis) and TPOT (decode, bandwidth axis).
 // All time quantities are expressed in milliseconds (ms).
 
-import type { Calibration } from './calibration.js';
-import { exposedComm } from './calibration.js';
-import type { GpuSpec, Interconnect, ModelSpec, ParallelLayout, Workload } from './types.js';
-import { B_ACT } from './types.js';
-import type { DerivedConstants } from './model.js';
-import { attentionQuadFlops } from './model.js';
-import { peakFlopsOf } from './hardware.js';
-import { shardFactors } from './layout.js';
+import type { Calibration } from './calibration';
+import { exposedComm } from './calibration';
+import type { GpuSpec, Interconnect, ModelSpec, ParallelLayout, Workload } from './types';
+import { B_ACT } from './types';
+import type { DerivedConstants } from './model';
+import { attentionQuadFlops } from './model';
+import { peakFlopsOf } from './hardware';
+import { shardFactors } from './layout';
 
 export interface CommModel {
   intraBwBps: number; // effective bandwidth, bytes/s (comm efficiency applied)

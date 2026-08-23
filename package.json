@@ -8,11 +8,12 @@
     "build": "tsc",
     "typecheck": "tsc -p tsconfig.check.json",
     "test": "vitest run",
-    "demo": "tsc examples/demo.ts src/core/*.ts --outDir dist-demo --rootDir . --module esnext --target es2022 --moduleResolution bundler --strict --skipLibCheck && node dist-demo/examples/demo.js",
-    "calibrate": "tsc examples/calibrate.ts src/core/*.ts src/data/*.ts --outDir dist-demo --rootDir . --module esnext --target es2022 --moduleResolution bundler --strict --skipLibCheck && node dist-demo/examples/calibrate.js"
+    "demo": "tsx examples/demo.ts",
+    "calibrate": "tsx examples/calibrate.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "tsx": "^4.23.12",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
   }

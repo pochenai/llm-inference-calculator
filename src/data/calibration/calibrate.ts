@@ -6,14 +6,14 @@
 // did not report render as "-". THR entries are compared against the decode
 // roofline ceiling BW_total / (kv_per_token * S_avg) as an upper bound.
 
-import { IDEAL, DEFAULT_ALPHA_INTRA_MS, DEFAULT_ALPHA_INTER_MS } from '../core/calibration.js';
-import type { Calibration } from '../core/calibration.js';
-import { evaluate } from '../core/metrics.js';
-import { deriveConstants } from '../core/model.js';
-import { MEASUREMENTS } from './measurements.js';
-import type { Measurement } from './measurements.js';
-import { model } from './models.js';
-import { gpu } from './gpus.js';
+import { IDEAL, DEFAULT_ALPHA_INTRA_MS, DEFAULT_ALPHA_INTER_MS } from '../../core/calibration';
+import type { Calibration } from '../../core/calibration';
+import { evaluate } from '../../core/metrics';
+import { deriveConstants } from '../../core/model';
+import { MEASUREMENTS } from './measurements';
+import type { Measurement } from './measurements';
+import { model } from './models';
+import { gpu } from './gpus';
 
 // Small-context latency entries: batch=1 collectives cannot be overlapped, so
 // expose TP/EP comm and use the default per-call alpha.

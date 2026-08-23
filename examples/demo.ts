@@ -1,7 +1,7 @@
 // Smoke demo: evaluate a few representative scenarios in ideal-value mode.
 
-import type { GpuSpec, ModelSpec, SystemSpec } from '../src/core/types.js';
-import { evaluate } from '../src/core/metrics.js';
+import type { GpuSpec, ModelSpec, SystemSpec } from '../src/core/types';
+import { evaluate } from '../src/core/metrics';
 
 const llama70b: ModelSpec = {
   id: 'llama3_1_70b',

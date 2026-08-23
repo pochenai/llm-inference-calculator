@@ -1,10 +1,10 @@
 // VRAM model: per-GPU breakdown, feasibility check, and B_max inversion.
 
-import type { GpuSpec, ModelSpec, ParallelLayout, Workload } from './types.js';
-import { B_ACT, GiB } from './types.js';
-import type { DerivedConstants } from './model.js';
-import { qDimOf } from './model.js';
-import { shardFactors } from './layout.js';
+import type { GpuSpec, ModelSpec, ParallelLayout, Workload } from './types';
+import { B_ACT, GiB } from './types';
+import type { DerivedConstants } from './model';
+import { qDimOf } from './model';
+import { shardFactors } from './layout';
 
 export interface MemoryOptions {
   flashAttention: boolean;

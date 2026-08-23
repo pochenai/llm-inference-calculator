@@ -1,6 +1,6 @@
 // Parallel layout: constraint validation and per-GPU shard factors.
 
-import type { ModelSpec, ParallelLayout } from './types.js';
+import type { ModelSpec, ParallelLayout } from './types';
 
 // Validate TP * EP * PP * DP = N_gpu and structural rules.
 // Returns a list of error messages (empty = valid).

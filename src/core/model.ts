@@ -1,8 +1,8 @@
 // ModelSpec -> derived constants (W_bytes, kv geometry, flops_per_token).
 
-import type { ModelSpec, QuantPrecision } from './types.js';
-import { BYTES_PER_PARAM } from './types.js';
-import { CalcError } from './errors.js';
+import type { ModelSpec, QuantPrecision } from './types';
+import { BYTES_PER_PARAM } from './types';
+import { CalcError } from './errors';
 
 export interface KvGeometry {
   // Marginal KV bytes per added token (sliding layers already at window cap).
