@@ -91,6 +91,10 @@ export interface SystemSpec {
   gpu: GpuSpec;
   gpusPerNode: number;
   interNodeBwGbps: number;
+  // Optional intra-node bandwidth override (e.g. an explicit NVLink/PCIe
+  // choice from the UI). Absent => resolved from GpuSpec.nvlinkBwGbps or
+  // the PCIe fallback.
+  intraNodeBwGbps?: number;
   workload: Workload;
   weightQuant: QuantPrecision;
   kvQuant: QuantPrecision; // KV cache precision, independent of weight quant

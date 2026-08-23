@@ -401,10 +401,14 @@ throughput = B * N_out / E2E_latency      # output tokens per second
 
 - **语言**：TypeScript，计算核心为纯函数库，与 UI 解耦，可单测
 - **部署**：Vercel。全部计算在浏览器端完成，无后端、无运行时成本
-- **框架**：Vite + React（或 Next.js 静态导出），待定；计算核心不依赖所选框架
+- **框架**：UI 采用 Vite + React（位于 `src/ui/`，单一根 `package.json`）；计算核心不依赖所选框架
 - **数据层**：模型库 / GPU 库从 tps 项目的 ESM JS 数据迁移（`export default` 结构可平滑转 TS），数值使用前需重新校验
 
 ```
+index.html            # Vite 入口
+vite.config.ts        # UI 构建配置（产物输出 dist-ui/，与库构建 dist/ 隔离）
+tsconfig.json         # 编辑器 / 类型检查用全量工程（src + tests + examples，noEmit）
+tsconfig.build.json   # 库构建（仅 src，不含 src/ui，输出 dist/）
 src/
   core/
     model.ts        # ModelSpec -> derived constants (W_bytes, kv_per_token, flops_per_token)
@@ -412,10 +416,33 @@ src/
     layout.ts       # ParallelLayout (TP, PP, DP, EP, PD disaggregation)
     memory.ts       # vramBreakdown() -> per-GPU breakdown + feasibility + B_max
     latency.ts      # ttft(), tpot()
-    metrics.ts      # e2eLatency(), throughput()
+    metrics.ts      # evaluate() -> Result<EvaluationResult>（唯一公开入口，不抛异常）
+    solver.ts       # solveParallelLayout() -> 自动求解 TP/PP（DP ⇒ TP ⇒ EP ⇒ PP）
     calibration.ts  # efficiency constants (single-node calibrated)
-  ui/             # input form + result view (framework-dependent)
+  ui/               # Vite + React 输入表单 + 结果视图（直接 import ../core）
 ```
+
+### 常用命令
+
+```bash
+npm install
+npm run dev        # UI 开发服务器（默认 http://localhost:5173）
+npm run ui:build   # 类型检查 + UI 静态产物（dist-ui/）
+npm run build      # 库构建（dist/，不含 UI）
+npm test           # vitest 单元测试
+npm run typecheck  # 全量类型检查（src + tests + examples）
+```
+
+UI 交互约定：
+
+- 用户给定模型 / GPU / GPU 数目 / DP / EP / 量化 / 负载等输入，`solveParallelLayout()`
+  自动决定 TP、PP：**优先保证显存装得下**（TP 从大到小逐个试），所有可行布局以
+  chip 形式展示，可点选切换；
+- 量化为单一选项，同时作用于权重与 KV cache（不支持 <4bit）；
+- batch size 输入框的占位符为当前配置下显存反推的 B_max；
+- FlashAttention 默认开启；PD 分离（Prefill-Decode Disaggregation）默认关闭，
+  开启后 prefill / decode 池各自独立求解布局；
+- 校准参数默认理想值（`IDEAL`，全部效率 = 1），高级面板可覆盖。
 
 ## 附录：旧问题归档
 

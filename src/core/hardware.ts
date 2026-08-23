@@ -6,9 +6,15 @@ import { CalcError } from './errors';
 // PCIe fallback when a GPU has no NVLink. Conservative Gen4 x16 figure.
 export const PCIE_BW_GBPS = 32;
 
-export function resolveInterconnect(gpu: GpuSpec, interNodeBwGbps: number): Interconnect {
+// intraNodeBwGbpsOverride lets callers (e.g. the UI) pin an explicit
+// intra-node fabric instead of the GPU-datasheet default.
+export function resolveInterconnect(
+  gpu: GpuSpec,
+  interNodeBwGbps: number,
+  intraNodeBwGbpsOverride?: number,
+): Interconnect {
   return {
-    intraNodeBwGbps: gpu.nvlinkBwGbps ?? PCIE_BW_GBPS,
+    intraNodeBwGbps: intraNodeBwGbpsOverride ?? gpu.nvlinkBwGbps ?? PCIE_BW_GBPS,
     interNodeBwGbps,
   };
 }

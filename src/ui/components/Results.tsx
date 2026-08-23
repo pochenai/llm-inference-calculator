@@ -1,0 +1,377 @@
+// Right-hand results panel: status, headline metrics, layout, VRAM, phase details.
+
+import { lazy, Suspense } from 'react';
+import type { EvaluationResult } from '../../core/metrics';
+import type { Result } from '../../core/errors';
+import type { GpuSpec, ModelSpec, ParallelLayout, SystemSpec } from '../../core/types';
+import type { SolverResult } from '../../core/solver';
+import type { Calibration } from '../../core/calibration';
+import { fmtBytes, fmtInt, fmtMs, fmtPct, fmtTps } from '../lib/format';
+
+// Lazy-loaded so recharts does not land in the initial bundle.
+const BatchSweepChart = lazy(async () => ({
+  default: (await import('./BatchSweepChart')).BatchSweepChart,
+}));
+
+export interface ResultsProps {
+  model: ModelSpec;
+  gpu: GpuSpec;
+  spec: SystemSpec;
+  cal: Calibration;
+  result: Result<EvaluationResult>;
+  solved: SolverResult;
+  effectiveLayout: ParallelLayout;
+  layoutIsOverride: boolean;
+  onPickLayout: (l: ParallelLayout | null) => void;
+  disaggOn: boolean;
+  prefillSolved: SolverResult | null;
+  decodeSolved: SolverResult | null;
+  warnings: string[];
+}
+
+function layoutLabel(l: ParallelLayout): string {
+  return `TP ${l.tp} · EP ${l.ep} · PP ${l.pp} · DP ${l.dp}`;
+}
+
+function sameLayout(a: ParallelLayout, b: ParallelLayout): boolean {
+  return a.tp === b.tp && a.pp === b.pp && a.ep === b.ep && a.dp === b.dp;
+}
+
+export function Results(props: ResultsProps) {
+  const { result } = props;
+  if (!result.ok) {
+    return (
+      <div className="card status-card err">
+        <strong>无法计算</strong>
+        <span className="status-detail">
+          [{result.error.code}] {result.error.message}
+        </span>
+      </div>
+    );
+  }
+  const r = result.value;
+  return (
+    <>
+      <StatusBanner {...props} r={r} />
+      <MetricTiles r={r} />
+      <LayoutCard {...props} />
+      <VramCard {...props} r={r} />
+      <PhaseCard r={r} model={props.model} spec={props.spec} disaggOn={props.disaggOn} />
+      <Suspense
+        fallback={
+          <div className="card">
+            <div className="muted small">加载图表…</div>
+          </div>
+        }
+      >
+        <BatchSweepChart spec={props.spec} cal={props.cal} />
+      </Suspense>
+      <Warnings {...props} />
+    </>
+  );
+}
+
+function StatusBanner(props: ResultsProps & { r: EvaluationResult }) {
+  const { r, model, gpu, spec } = props;
+  if (!r.feasible) {
+    const over = r.memory.totalBytes - r.memory.capacityBytes;
+    return (
+      <div className="card status-card err">
+        <strong>显存不足（单卡超出 {fmtBytes(Math.max(0, over))}）</strong>
+        <span className="status-detail">
+          {model.name} @ {spec.weightQuant.toUpperCase()} / {gpu.name} —
+          试试更低量化、更多 GPU、更高 EP/PP，或减小 batch / 序列长度。
+        </span>
+      </div>
+    );
+  }
+  const totalGpus = props.disaggOn
+    ? (spec.disagg?.prefillGpus ?? 0) + (spec.disagg?.decodeGpus ?? 0)
+    : spec.layout.tp * spec.layout.ep * spec.layout.pp * spec.layout.dp;
+  return (
+    <div className="card status-card ok">
+      <strong>可部署</strong>
+      <span className="status-detail">
+        {model.name}（{model.type === 'moe' ? 'MoE' : 'Dense'} · {model.paramsB}B） on {gpu.name} × {totalGpus}
+        {props.disaggOn
+          ? `（${spec.disagg?.prefillGpus ?? 0}P + ${spec.disagg?.decodeGpus ?? 0}D）`
+          : ''}
+      </span>
+    </div>
+  );
+}
+
+function MetricTiles({ r }: { r: EvaluationResult }) {
+  const tiles = [
+    { label: 'TTFT（首 token）', value: fmtMs(r.ttftMs) },
+    { label: 'TPOT（每 token）', value: fmtMs(r.tpotMs) },
+    { label: '端到端延迟', value: fmtMs(r.e2eMs) },
+    { label: '系统吞吐', value: `${fmtTps(r.throughputTps)} tok/s` },
+  ];
+  return (
+    <div className="metric-grid">
+      {tiles.map((t) => (
+        <div className="card metric-tile" key={t.label}>
+          <span className="metric-value">{t.value}</span>
+          <span className="metric-label">{t.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LayoutCard(props: ResultsProps) {
+  const { solved, effectiveLayout, layoutIsOverride, onPickLayout, disaggOn, prefillSolved, decodeSolved } = props;
+
+  if (disaggOn) {
+    return (
+      <div className="card">
+        <h3 className="card-title">并行布局（PD 分离）</h3>
+        <div className="card-body">
+          <div className="kv">
+            <span>Prefill 池</span>
+            <b>{prefillSolved ? layoutLabel(prefillSolved.chosen ?? prefillSolved.bestEffort ?? { tp: 1, pp: 1, ep: 1, dp: 1 }) : '–'}</b>
+            <span>Decode 池</span>
+            <b>{decodeSolved ? layoutLabel(decodeSolved.chosen ?? decodeSolved.bestEffort ?? { tp: 1, pp: 1, ep: 1, dp: 1 }) : '–'}</b>
+          </div>
+          <SolverIssues issues={[...(prefillSolved?.issues ?? []), ...(decodeSolved?.issues ?? [])]} />
+        </div>
+      </div>
+    );
+  }
+
+  const alternatives = solved.feasibleLayouts.filter((l) => !sameLayout(l, solved.chosen ?? { tp: -1, pp: -1, ep: -1, dp: -1 }));
+  return (
+    <div className="card">
+      <h3 className="card-title">并行布局（自动求解）</h3>
+      <div className="card-body">
+        <div className="layout-current">
+          <b>{layoutLabel(effectiveLayout)}</b>
+          <span className="muted">
+            （TP×EP×PP×DP = {effectiveLayout.tp * effectiveLayout.ep * effectiveLayout.pp * effectiveLayout.dp} GPU）
+          </span>
+          {layoutIsOverride && (
+            <button type="button" className="linklike" onClick={() => onPickLayout(null)}>
+              回到自动
+            </button>
+          )}
+        </div>
+        {solved.chosen === null && <div className="note err-note">没有任何布局能装下当前配置；以下为最接近的参照。</div>}
+        {alternatives.length > 0 && (
+          <div className="chip-row">
+            {alternatives.map((l) => (
+              <button
+                key={layoutLabel(l)}
+                type="button"
+                className={`chip${sameLayout(l, effectiveLayout) ? ' active' : ''}`}
+                onClick={() => onPickLayout(l)}
+              >
+                {layoutLabel(l)}
+              </button>
+            ))}
+          </div>
+        )}
+        {alternatives.length === 0 && solved.feasibleLayouts.length > 0 && (
+          <div className="muted small">当前为唯一可行布局。</div>
+        )}
+        <SolverIssues issues={solved.issues} />
+      </div>
+    </div>
+  );
+}
+
+function SolverIssues({ issues }: { issues: string[] }) {
+  if (issues.length === 0) return null;
+  return (
+    <ul className="issue-list">
+      {issues.map((s) => (
+        <li key={s}>{s}</li>
+      ))}
+    </ul>
+  );
+}
+
+function VramBar({ label, mem }: { label?: string; mem: EvaluationResult['memory'] }) {
+  const cap = mem.capacityBytes;
+  const segs = [
+    { name: '权重', bytes: mem.weightsBytes, cls: 'seg-w' },
+    { name: 'KV cache', bytes: mem.kvBytes, cls: 'seg-kv' },
+    { name: '激活', bytes: mem.activationBytes, cls: 'seg-act' },
+    { name: '开销', bytes: mem.overheadBytes, cls: 'seg-ov' },
+  ];
+  const total = mem.totalBytes;
+  const scale = total > cap ? cap / total : 1;
+  return (
+    <div className="vram-block">
+      {label ? <div className="vram-label">{label}</div> : null}
+      <div className={`vram-bar${mem.feasible ? '' : ' over'}`}>
+        {segs.map((s) => (
+          <div
+            key={s.name}
+            className={`vram-seg ${s.cls}`}
+            style={{ width: `${Math.max(0, (s.bytes / cap) * 100 * scale)}%` }}
+            title={`${s.name}: ${fmtBytes(s.bytes)}`}
+          />
+        ))}
+      </div>
+      <div className="vram-meta">
+        <span>
+          {fmtBytes(total)} / {fmtBytes(cap)}（{fmtPct(total / cap)}）
+          {mem.feasible ? '' : ' — 超出'}
+        </span>
+        <span>B_max = {fmtInt(mem.bMax)}</span>
+      </div>
+      <div className="vram-legend">
+        {segs.map((s) => (
+          <span key={s.name}>
+            <i className={`dot ${s.cls}`} />
+            {s.name} {fmtBytes(s.bytes)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VramCard(props: ResultsProps & { r: EvaluationResult }) {
+  const { r, disaggOn } = props;
+  return (
+    <div className="card">
+      <h3 className="card-title">显存占用（每卡）</h3>
+      <div className="card-body">
+        {disaggOn && r.memoryPrefillPool ? (
+          <>
+            <VramBar label="Prefill 池" mem={r.memoryPrefillPool} />
+            <VramBar label="Decode 池" mem={r.memory} />
+          </>
+        ) : (
+          <VramBar mem={r.memory} />
+        )}
+        <div className="muted small">
+          容量已扣除 headroom 预留；B_max 为显存约束下可反推的最大 batch。
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PhaseCard({
+  r,
+  model,
+  spec,
+  disaggOn,
+}: {
+  r: EvaluationResult;
+  model: ModelSpec;
+  spec: SystemSpec;
+  disaggOn: boolean;
+}) {
+  const B = spec.workload.batchSize;
+  const nIn = spec.workload.inputLen;
+  // Prefill throughput: input tokens processed per second (B * N_in / TTFT).
+  const prefillTps = r.ttftMs > 0 ? (B * nIn) / (r.ttftMs / 1e3) : 0;
+  // Decode throughput: generated tokens per second across the batch (B / TPOT).
+  const decodeTps = r.tpotMs > 0 ? B / (r.tpotMs / 1e3) : 0;
+  return (
+    <div className="card">
+      <h3 className="card-title">阶段明细</h3>
+      <div className="card-body phase-grid">
+        <table className="detail-table">
+          <thead>
+            <tr>
+              <th colSpan={2}>Prefill（计算受限）</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>总 FLOPs</td>
+              <td>{(r.prefill.flops / 1e12).toFixed(1)} TFLOP</td>
+            </tr>
+            <tr>
+              <td>计算时间</td>
+              <td>{fmtMs(r.prefill.tComputeMs)}</td>
+            </tr>
+            <tr>
+              <td>通信时间（总）</td>
+              <td>{fmtMs(r.prefill.tCommMs)}</td>
+            </tr>
+            <tr>
+              <td>TTFT</td>
+              <td>
+                <b>{fmtMs(r.prefill.ttftMs)}</b>
+              </td>
+            </tr>
+            <tr>
+              <td>吞吐（输入 token/s）</td>
+              <td>
+                <b>{fmtTps(prefillTps)}</b>
+              </td>
+            </tr>
+            {disaggOn && r.kvTransferExposedMs > 0 && (
+              <tr>
+                <td>KV 传输（暴露）</td>
+                <td>{fmtMs(r.kvTransferExposedMs)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <table className="detail-table">
+          <thead>
+            <tr>
+              <th colSpan={2}>Decode（带宽受限）</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>权重读取 / 卡·步</td>
+              <td>{fmtBytes(r.decode.weightsReadBytes)}</td>
+            </tr>
+            <tr>
+              <td>KV 读取 / 卡·步</td>
+              <td>{fmtBytes(r.decode.kvReadBytes)}</td>
+            </tr>
+            <tr>
+              <td>带宽时间</td>
+              <td>{fmtMs(r.decode.tBandwidthMs)}</td>
+            </tr>
+            <tr>
+              <td>通信时间（总）</td>
+              <td>{fmtMs(r.decode.tCommMs)}</td>
+            </tr>
+            {model.type === 'moe' && (
+              <tr>
+                <td>专家覆盖率</td>
+                <td>{fmtPct(r.decode.expertCoverage)}</td>
+              </tr>
+            )}
+            <tr>
+              <td>TPOT</td>
+              <td>
+                <b>{fmtMs(r.decode.tpotMs)}</b>
+              </td>
+            </tr>
+            <tr>
+              <td>吞吐（输出 token/s）</td>
+              <td>
+                <b>{fmtTps(decodeTps)}</b>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Warnings(props: ResultsProps) {
+  if (props.warnings.length === 0) return null;
+  return (
+    <div className="card warn-card">
+      {props.warnings.map((w) => (
+        <div key={w} className="warn-line">
+          ⚠ {w}
+        </div>
+      ))}
+    </div>
+  );
+}

@@ -1,41 +1,14 @@
 // Smoke demo: evaluate a few representative scenarios in ideal-value mode.
+// Models / GPUs come from the bundled data catalog (src/data).
 
-import type { GpuSpec, ModelSpec, SystemSpec } from '../src/core/types';
 import { evaluate } from '../src/core/metrics';
+import type { SystemSpec } from '../src/core/types';
+import { model } from '../src/data/models';
+import { gpu } from '../src/data/gpus/nvidia';
 
-const llama70b: ModelSpec = {
-  id: 'llama3_1_70b',
-  name: 'Llama 3.1 70B',
-  type: 'dense',
-  paramsB: 70.6,
-  layers: 80,
-  hiddenSize: 8192,
-  kvHeads: 8,
-  headDim: 128,
-  maxCtx: 131072,
-};
-
-const qwen3Moe: ModelSpec = {
-  id: 'qwen3_235b',
-  name: 'Qwen3 235B A22B',
-  type: 'moe',
-  paramsB: 235,
-  layers: 94,
-  hiddenSize: 4096,
-  kvHeads: 4,
-  headDim: 128,
-  maxCtx: 262144,
-  moe: { experts: 128, expertsPerToken: 8, activeParamsB: 22, execution: 'shared_routed' },
-};
-
-const h100: GpuSpec = {
-  id: 'h100_sxm',
-  name: 'H100 SXM5',
-  vramGb: 80,
-  bwGbps: 3350,
-  peakTflops: { bf16: 989, fp8: 1979, int8: 1979, int4: 3958 },
-  nvlinkBwGbps: 900,
-};
+const llama70b = model('llama3_1_70b');
+const qwen3Moe = model('qwen3_235b');
+const h100 = gpu('h100_sxm');
 
 function report(title: string, spec: SystemSpec): void {
   const outcome = evaluate(spec);

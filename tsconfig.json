@@ -4,26 +4,32 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": [
-      "ES2022"
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
     ],
+    "types": [
+      "node"
+    ],
+    "jsx": "react-jsx",
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": true,
-    "declaration": true,
-    "outDir": "dist",
-    "rootDir": "src",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
     "skipLibCheck": true
   },
   "include": [
     "src/**/*",
-    "src/data/calibration/calibrate.ts",
-    "src/data/calibration/gpus.ts",
-    "src/data/calibration/measurements.ts",
-    "src/data/calibration/models.ts"
+    "tests/**/*",
+    "examples/**/*",
+    "vite.config.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "tests"
+    "dist-ui"
   ]
 }

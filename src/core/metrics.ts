@@ -41,7 +41,7 @@ export function evaluate(spec: SystemSpec, cal: Calibration = IDEAL): Result<Eva
 
 function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
   const derived = deriveConstants(spec.model, spec.weightQuant, spec.kvQuant);
-  const inter = resolveInterconnect(spec.gpu, spec.interNodeBwGbps);
+  const inter = resolveInterconnect(spec.gpu, spec.interNodeBwGbps, spec.intraNodeBwGbps);
   const comm = buildCommModel(inter, cal);
   const memOpts = { flashAttention: spec.flashAttention, headroom: spec.headroom };
 

@@ -3,18 +3,30 @@
   "version": "0.1.0",
   "description": "Static performance model for LLM inference: VRAM feasibility + ideal TTFT/TPOT/throughput",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/core/index.js",
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc -p tsconfig.check.json",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "demo": "tsx examples/demo.ts",
-    "calibrate": "tsx examples/calibrate.ts"
+    "calibrate": "tsx examples/calibrate.ts",
+    "dev": "vite",
+    "ui:build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
     "tsx": "^4.23.12",
     "typescript": "^5.6.0",
+    "vite": "^6.0.0",
     "vitest": "^3.0.0"
   }
 }

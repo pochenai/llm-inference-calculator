@@ -1,7 +1,9 @@
 // Sanity tests for the calculator core (ideal-value mode).
 
 import { describe, expect, it } from 'vitest';
-import type { GpuSpec, ModelSpec, SystemSpec } from '../src/core/types.js';
+import type { ModelSpec, SystemSpec } from '../src/core/types.js';
+import { model } from '../src/data/models/index.js';
+import { gpu } from '../src/data/gpus/nvidia/index.js';
 import { deriveConstants, nonExpertParamsB, buildKvGeometry, attentionQuadFlops } from '../src/core/model.js';
 import { activationBytesPerSeq } from '../src/core/memory.js';
 import { validateLayout } from '../src/core/layout.js';
@@ -19,53 +21,11 @@ function evaluate(spec: SystemSpec, cal?: Calibration): EvaluationResult {
   return unwrap(evaluateResult(spec, cal));
 }
 
-const llama70b: ModelSpec = {
-  id: 'llama3_1_70b',
-  name: 'Llama 3.1 70B',
-  type: 'dense',
-  paramsB: 70.6,
-  layers: 80,
-  hiddenSize: 8192,
-  kvHeads: 8,
-  headDim: 128,
-  maxCtx: 131072,
-};
-
-const qwen3Moe: ModelSpec = {
-  id: 'qwen3_235b',
-  name: 'Qwen3 235B A22B',
-  type: 'moe',
-  paramsB: 235,
-  layers: 94,
-  hiddenSize: 4096,
-  kvHeads: 4,
-  headDim: 128,
-  maxCtx: 262144,
-  moe: { experts: 128, expertsPerToken: 8, activeParamsB: 22, execution: 'shared_routed' },
-};
-
-const gemma3Like: ModelSpec = {
-  id: 'gemma3_27b_like',
-  name: 'Gemma 3 27B (sliding window)',
-  type: 'dense',
-  paramsB: 27,
-  layers: 62,
-  hiddenSize: 5376,
-  kvHeads: 16,
-  headDim: 128,
-  localLayers: 52,
-  slidingWindow: 1024,
-  maxCtx: 131072,
-};
-
-const h100: GpuSpec = {
-  id: 'h100_sxm',
-  name: 'H100 SXM5',
-  vramGb: 80,
-  bwGbps: 3350,
-  peakTflops: { bf16: 989, fp8: 1979, int8: 1979, int4: 3958 },
-  nvlinkBwGbps: 900,
-};
+// Fixtures come straight from the bundled data catalog (src/data).
+const llama70b = model('llama3_1_70b');
+const qwen3Moe = model('qwen3_235b');
+const gemma3_27b = model('gemma3_27b');
+const h100 = gpu('h100_sxm');
 
 function llama8xH100(over?: Partial<SystemSpec>): SystemSpec {
   return {
@@ -106,7 +66,7 @@ describe('model derived constants', () => {
   });
 
   it('sliding-window layers cap KV at the window', () => {
-    const kv = buildKvGeometry(gemma3Like, BYTES_PER_PARAM.fp16);
+    const kv = buildKvGeometry(gemma3_27b, BYTES_PER_PARAM.fp16);
     expect(kv.globalLayers).toBe(10);
     expect(kv.localLayers).toBe(52);
     const elemsPerLayer = 16 * 128; // kv_heads * head_dim

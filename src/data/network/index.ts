@@ -6,13 +6,13 @@ export const INTRA_NODES_CONNECTION = [
     { id: 'nvlink3', label: 'NVLink 3.0 (Ampere)', bw: 600, scope: 'intra' },     // 600 GB/s bidirectional
     { id: 'nvswitch', label: 'NVSwitch Board', bw: 900, scope: 'intra' },
 
+    // CPU-to-GPU (Grace Hopper / Blackwell Grace)
+    { id: 'c2c', label: 'NVLink-C2C (Grace Hopper)', bw: 900, scope: 'intra' },  // 900 GB/s bidirectional
+
     // PCIe (Host-to-GPU / GPU-to-NIC)
     { id: 'pcie6', label: 'PCIe 6.0', bw: 256, scope: 'intra' },                  // 256 GB/s bidirectional (x16)
     { id: 'pcie5', label: 'PCIe 5.0', bw: 128, scope: 'intra' },                  // 128 GB/s bidirectional (x16)
     { id: 'pcie4', label: 'PCIe 4.0', bw: 64, scope: 'intra' },                   // 64 GB/s bidirectional (x16)
-
-    // CPU-to-GPU (Grace Hopper / Blackwell Grace)
-    { id: 'c2c', label: 'NVLink-C2C (Grace Hopper)', bw: 900, scope: 'intra' },  // 900 GB/s bidirectional
 ]
 
 // Inter-node Connections （跨节点)

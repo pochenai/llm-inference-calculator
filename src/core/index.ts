@@ -9,3 +9,4 @@ export * from './layout';
 export * from './memory';
 export * from './latency';
 export * from './metrics';
+export * from './solver';
