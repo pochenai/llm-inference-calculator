@@ -222,7 +222,7 @@ function VramBar({ label, mem }: { label?: string; mem: EvaluationResult['memory
           {fmtBytes(total)} / {fmtBytes(cap)}（{fmtPct(total / cap)}）
           {mem.feasible ? '' : ' — 超出'}
         </span>
-        <span>B_max = {fmtInt(mem.bMax)}</span>
+        <span>最大 Batch size = {fmtInt(mem.bMax)}</span>
       </div>
       <div className="vram-legend">
         {segs.map((s) => (
@@ -251,7 +251,7 @@ function VramCard(props: ResultsProps & { r: EvaluationResult }) {
           <VramBar mem={r.memory} />
         )}
         <div className="muted small">
-          容量已扣除 headroom 预留；B_max 为显存约束下可反推的最大 batch。
+          容量已扣除 headroom 预留；最大 batch 为显存约束下可反推的上限。
         </div>
       </div>
     </div>

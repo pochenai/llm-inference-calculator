@@ -120,7 +120,7 @@ export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibrat
         </div>
         {infeasible.length > 0 && (
           <div className="muted small">
-            batch = {infeasible.join(', ')} 显存不足（超出 B_max），未在图中显示。
+            batch = {infeasible.join(', ')} 显存不足（超过最大 Batch size），未在图中显示。
           </div>
         )}
       </div>

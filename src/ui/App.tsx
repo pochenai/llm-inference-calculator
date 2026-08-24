@@ -433,7 +433,7 @@ export default function App() {
               onChange={setBatchSize}
               min={1}
               placeholder={core?.bMaxPlaceholder}
-              hint="占位符为当前配置下显存允许的最大batch size (B_max)"
+              hint="占位符为当前配置下显存允许的最大 batch size"
             />
           </Section>
 
