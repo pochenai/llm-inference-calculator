@@ -322,10 +322,6 @@ input[type='range'] {
   align-items: center;
   gap: 10px;
   padding: 6px 4px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
 }
 
 .toggle-track {
@@ -336,6 +332,9 @@ input[type='range'] {
   background: var(--border-strong);
   position: relative;
   transition: background 0.15s ease;
+  border: none;
+  padding: 0;
+  cursor: pointer;
 }
 
 .toggle-thumb {

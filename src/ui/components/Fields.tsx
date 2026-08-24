@@ -110,20 +110,20 @@ export function Toggle({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <button
-      type="button"
-      className={`toggle${checked ? ' on' : ''}`}
-      aria-pressed={checked}
-      onClick={() => onChange(!checked)}
-    >
-      <span className="toggle-track">
+    <div className={`toggle${checked ? ' on' : ''}`}>
+      <button
+        type="button"
+        className="toggle-track"
+        aria-pressed={checked}
+        onClick={() => onChange(!checked)}
+      >
         <span className="toggle-thumb" />
-      </span>
+      </button>
       <span className="toggle-text">
         {label}
         {desc ? <small>{desc}</small> : null}
       </span>
-    </button>
+    </div>
   );
 }
 
