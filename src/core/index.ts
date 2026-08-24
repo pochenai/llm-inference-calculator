@@ -10,3 +10,6 @@ export * from './memory';
 export * from './latency';
 export * from './metrics';
 export * from './solver';
+
+// Draft model suggestion utilities for speculative decoding
+export { suggestDraftModel, modelsInRange, familyOf } from '../data/models/suggest';

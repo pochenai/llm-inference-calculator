@@ -13,20 +13,36 @@ import { resolveInterconnect } from './hardware';
 import { validateLayout } from './layout';
 import type { VramBreakdown } from './memory';
 import { vramBreakdown } from './memory';
-import type { DecodeDetail, PrefillDetail } from './latency';
-import { buildCommModel, decodeStepTime, prefillTime } from './latency';
+import type { DecodeDetail, PrefillDetail, SdDecodeDetail } from './latency';
+import { buildCommModel, decodeStepTime, prefillTime, sdDecodeStepTime } from './latency';
 
 export interface EvaluationResult {
   feasible: boolean;
   memory: VramBreakdown; // headline breakdown (decode pool in disagg mode)
   memoryPrefillPool?: VramBreakdown; // only in PD-disaggregation mode
   prefill: PrefillDetail;
-  decode: DecodeDetail;
+  decode: DecodeDetail; // SD-adjusted when speculative enabled
   kvTransferExposedMs: number; // PD-disaggregation KV transfer, overlap-adjusted
   ttftMs: number;
-  tpotMs: number;
-  e2eMs: number;
-  throughputTps: number; // output tokens per second, system level
+  tpotMs: number; // SD-adjusted (lower than baseline when SD enabled)
+  e2eMs: number; // SD-adjusted
+  throughputTps: number; // output tokens per second, system level (SD-adjusted)
+  // Speculative decoding details (present only when SD enabled)
+  speculative?: {
+    draftModelId: string;
+    draftModelName: string;
+    gamma: number;
+    acceptanceRate: number;
+    draftStepMs: number;
+    verifyStepMs: number;
+    cycleTimeMs: number;
+    expectedTokensPerCycle: number;
+    baselineTpotMs: number;
+    baselineE2eMs: number;
+    baselineThroughputTps: number;
+    speedup: number;
+    // Note: draftWeightsBytes and draftKvBytes are in memory.draftWeightsBytes and memory.draftKvBytes
+  };
 }
 
 // Public entry point: never throws; all failures surface as { ok: false }.
@@ -54,6 +70,12 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
   let decodeGpus: number;
   let kvTransferExposedMs = 0;
 
+  // Speculative decoding: derive constants for draft model
+  let draftDerived: ReturnType<typeof deriveConstants> | undefined;
+  if (spec.speculative) {
+    draftDerived = deriveConstants(spec.speculative.draftModel, spec.weightQuant, spec.kvQuant);
+  }
+
   if (spec.disagg) {
     const d = spec.disagg;
     prefillLayout = d.prefillLayout;
@@ -63,8 +85,26 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
     layoutErrors.push(...validateLayout(prefillLayout, spec.model, prefillGpus, spec.gpusPerNode));
     layoutErrors.push(...validateLayout(decodeLayout, spec.model, decodeGpus, spec.gpusPerNode));
 
-    memoryPrefillPool = vramBreakdown(spec.model, derived, spec.gpu, prefillLayout, spec.workload, memOpts);
-    memory = vramBreakdown(spec.model, derived, spec.gpu, decodeLayout, spec.workload, memOpts);
+    memoryPrefillPool = vramBreakdown(
+      spec.model,
+      derived,
+      spec.gpu,
+      prefillLayout,
+      spec.workload,
+      memOpts,
+    );
+    // SD-aware VRAM for decode pool
+    memory = vramBreakdown(
+      spec.model,
+      derived,
+      spec.gpu,
+      decodeLayout,
+      spec.workload,
+      memOpts,
+      spec.speculative?.draftModel,
+      draftDerived,
+      spec.speculative?.draftTp,
+    );
 
     // KV cache shipped from prefill pool to decode pool after prefill,
     // at sequence length N_in.
@@ -77,7 +117,18 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
     prefillGpus = spec.layout.tp * spec.layout.ep * spec.layout.pp * spec.layout.dp;
     decodeGpus = prefillGpus;
     layoutErrors.push(...validateLayout(spec.layout, spec.model, prefillGpus, spec.gpusPerNode));
-    memory = vramBreakdown(spec.model, derived, spec.gpu, spec.layout, spec.workload, memOpts);
+    // SD-aware VRAM
+    memory = vramBreakdown(
+      spec.model,
+      derived,
+      spec.gpu,
+      spec.layout,
+      spec.workload,
+      memOpts,
+      spec.speculative?.draftModel,
+      draftDerived,
+      spec.speculative?.draftTp,
+    );
   }
 
   if (layoutErrors.length > 0) {
@@ -96,12 +147,65 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
   };
 
   const prefill = prefillTime({ ...phaseBase, layout: prefillLayout }, prefillGpus);
-  const decode = decodeStepTime({ ...phaseBase, layout: decodeLayout });
+
+  let decode: DecodeDetail;
+  let tpotMs: number;
+  let speculativeResult: EvaluationResult['speculative'] | undefined;
+
+  if (spec.speculative && draftDerived) {
+    // Speculative decoding path
+    const draftInp = {
+      model: spec.speculative.draftModel,
+      derived: draftDerived,
+      gpu: spec.gpu,
+      layout: { tp: spec.speculative.draftTp, pp: 1, ep: 1, dp: 1 } as ParallelLayout,
+      workload: spec.workload,
+      weightQuant: spec.weightQuant,
+      cal,
+      comm,
+      gpusPerNode: spec.gpusPerNode,
+    };
+
+    const sdDetail: SdDecodeDetail = sdDecodeStepTime(
+      { ...phaseBase, layout: decodeLayout },
+      draftInp,
+      spec.speculative.gamma,
+      spec.speculative.acceptanceRate,
+    );
+
+    // decode field uses verifyStep (main model's decode detail)
+    decode = sdDetail.verifyStep;
+    tpotMs = sdDetail.tpotMs;
+
+    // Baseline metrics (without SD) for comparison
+    const baselineTpotMs = sdDetail.baselineTpotMs;
+    const baselineE2eMs = prefill.ttftMs + kvTransferExposedMs + spec.workload.outputLen * baselineTpotMs;
+    const baselineThroughputTps =
+      (spec.workload.batchSize * spec.workload.outputLen) / (baselineE2eMs / 1e3);
+
+    speculativeResult = {
+      draftModelId: spec.speculative.draftModel.id,
+      draftModelName: spec.speculative.draftModel.name,
+      gamma: spec.speculative.gamma,
+      acceptanceRate: spec.speculative.acceptanceRate,
+      draftStepMs: sdDetail.draftStep.tpotMs,
+      verifyStepMs: sdDetail.verifyStep.tpotMs,
+      cycleTimeMs: sdDetail.cycleTimeMs,
+      expectedTokensPerCycle: sdDetail.expectedTokensPerCycle,
+      baselineTpotMs,
+      baselineE2eMs,
+      baselineThroughputTps,
+      speedup: sdDetail.speedup,
+    };
+  } else {
+    // Standard decode path
+    decode = decodeStepTime({ ...phaseBase, layout: decodeLayout });
+    tpotMs = decode.tpotMs;
+  }
 
   const feasible = memory.feasible && (memoryPrefillPool ? memoryPrefillPool.feasible : true);
 
   const ttftMs = prefill.ttftMs + kvTransferExposedMs;
-  const tpotMs = decode.tpotMs;
   const e2eMs = ttftMs + spec.workload.outputLen * tpotMs;
   const throughputTps = (spec.workload.batchSize * spec.workload.outputLen) / (e2eMs / 1e3);
 
@@ -117,5 +221,6 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
     throughputTps,
   };
   if (memoryPrefillPool) result.memoryPrefillPool = memoryPrefillPool;
+  if (speculativeResult) result.speculative = speculativeResult;
   return result;
 }

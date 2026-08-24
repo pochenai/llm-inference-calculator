@@ -80,6 +80,16 @@ export interface PdDisaggConfig {
   kvTransferOverlap: number;
 }
 
+// Speculative decoding: a small draft model proposes γ tokens that the main
+// model verifies in a single parallel forward pass. Both models reside in GPU
+// memory simultaneously; they alternate on the same GPU cluster.
+export interface SpeculativeConfig {
+  draftModel: ModelSpec;
+  draftTp: number; // 1 ≤ draftTp ≤ numGpus (or decodeGpus if PD disagg)
+  gamma: number; // draft steps per verification round (typically 4-8)
+  acceptanceRate: number; // user-supplied, 0..1
+}
+
 export interface Workload {
   batchSize: number;
   inputLen: number;
@@ -102,6 +112,7 @@ export interface SystemSpec {
   flashAttention: boolean;
   headroom: number; // reserved VRAM fraction, e.g. 0.1
   disagg?: PdDisaggConfig;
+  speculative?: SpeculativeConfig; // speculative decoding configuration
 }
 
 export const GB = 1e9;

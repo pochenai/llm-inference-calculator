@@ -184,3 +184,54 @@ export function decodeStepTime(inp: PhaseInput, sHistoryOverride?: number): Deco
     tpotMs,
   };
 }
+
+// Speculative decoding decode step details.
+export interface SdDecodeDetail {
+  draftStep: DecodeDetail; // one draft forward pass
+  verifyStep: DecodeDetail; // one verification forward pass
+  gamma: number;  // num tokens
+  acceptanceRate: number;
+  expectedTokensPerCycle: number; // γ·α + 1
+  cycleTimeMs: number; // γ · draftStep.tpotMs + verifyStep.tpotMs
+  tpotMs: number; // cycleTimeMs / expectedTokensPerCycle
+  baselineTpotMs: number; // standard TPOT without SD
+  speedup: number; // baselineTpotMs / tpotMs
+}
+
+// Compute speculative decoding decode step time.
+// Draft model generates γ tokens, then main model verifies in one pass.
+// Both models use the same GPU (same HBM BW, same peak FLOPS).
+export function sdDecodeStepTime(
+  mainInp: PhaseInput,
+  draftInp: PhaseInput,
+  gamma: number,
+  acceptanceRate: number,
+): SdDecodeDetail {
+  // Draft step: use draft model parameters and layout
+  const draftStep = decodeStepTime(draftInp);
+
+  // Verify step: use main model
+  // For v1, ignore the small KV cache growth correction (γ << seqLen)
+  const verifyStep = decodeStepTime(mainInp);
+
+  // Baseline: standard TPOT without SD
+  const baselineTpotMs = verifyStep.tpotMs;
+
+  // SD formula
+  const expectedTokensPerCycle = gamma * acceptanceRate + 1;
+  const cycleTimeMs = gamma * draftStep.tpotMs + verifyStep.tpotMs;
+  const tpotMs = cycleTimeMs / expectedTokensPerCycle;
+  const speedup = baselineTpotMs / tpotMs;
+
+  return {
+    draftStep,
+    verifyStep,
+    gamma,
+    acceptanceRate,
+    expectedTokensPerCycle,
+    cycleTimeMs,
+    tpotMs,
+    baselineTpotMs,
+    speedup,
+  };
+}

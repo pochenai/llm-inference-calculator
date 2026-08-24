@@ -13,7 +13,7 @@ export interface MemoryOptions {
 }
 
 export interface VramBreakdown {
-  weightsBytes: number; // per GPU
+  weightsBytes: number; // per GPU (main weights only, for backward compat)
   kvBytes: number; // per GPU, at full workload length
   activationBytes: number; // per GPU
   overheadBytes: number;
@@ -21,6 +21,9 @@ export interface VramBreakdown {
   capacityBytes: number; // vram * (1 - headroom)
   feasible: boolean;
   bMax: number; // max batch under the VRAM constraint
+  // Speculative decoding components (present when SD enabled)
+  draftWeightsBytes?: number; // draft model weights per GPU
+  draftKvBytes?: number; // draft model KV per GPU
 }
 
 // Per-sequence activation bytes (scales linearly with B in both FA modes).
@@ -57,29 +60,54 @@ export function vramBreakdown(
   layout: ParallelLayout,
   workload: Workload,
   opts: MemoryOptions,
+  // Optional speculative decoding parameters
+  draftModel?: ModelSpec,
+  draftDerived?: DerivedConstants,
+  draftTp?: number,
 ): VramBreakdown {
   const sf = shardFactors(layout);
   const overheadBytes = opts.overheadBytes ?? GiB;
   const capacityBytes = gpu.vramGb * 1e9 * (1 - opts.headroom);
 
   const seqLen = workload.inputLen + workload.outputLen;
-  const kvPerSeq = derived.kv.totalBytes(seqLen) / sf.kvAndActivation;
-  const actPerSeq =
+  const mainKvPerSeq = derived.kv.totalBytes(seqLen) / sf.kvAndActivation;
+  const mainActPerSeq =
     activationBytesPerSeq(model, derived, workload, opts.flashAttention) / sf.kvAndActivation;
-  const weights = weightsPerGpu(derived, model, layout);
+  const mainWeights = weightsPerGpu(derived, model, layout);
 
-  const totalBytes = weights + (kvPerSeq + actPerSeq) * workload.batchSize + overheadBytes;
+  // Speculative decoding: account for draft model in VRAM
+  let draftWeights: number | undefined;
+  let draftKvPerSeq: number | undefined;
+  let draftActPerSeq: number | undefined;
+  let totalWeights = mainWeights;
+  let kvPerSeqTotal = mainKvPerSeq;
+  let actPerSeq = mainActPerSeq;
+
+  if (draftModel && draftDerived && draftTp) {
+    const draftLayout: ParallelLayout = { tp: draftTp, pp: 1, ep: 1, dp: 1 };
+    draftWeights = weightsPerGpu(draftDerived, draftModel, draftLayout);
+    draftKvPerSeq = draftDerived.kv.totalBytes(seqLen) / draftTp;
+    draftActPerSeq =
+      activationBytesPerSeq(draftModel, draftDerived, workload, opts.flashAttention) / draftTp;
+
+    totalWeights = mainWeights + draftWeights;
+    kvPerSeqTotal = mainKvPerSeq + draftKvPerSeq;
+    // Activations: take max (draft and main don't run simultaneously)
+    actPerSeq = Math.max(mainActPerSeq, draftActPerSeq);
+  }
+
+  const totalBytes = totalWeights + (kvPerSeqTotal + actPerSeq) * workload.batchSize + overheadBytes;
   const feasible = totalBytes <= capacityBytes;
 
   let bMax: number = 0;
-  const budget = capacityBytes - weights - overheadBytes;
-  if (budget > 0 && kvPerSeq + actPerSeq > 0) {
-    bMax = Math.floor(budget / (kvPerSeq + actPerSeq));
+  const budget = capacityBytes - totalWeights - overheadBytes;
+  if (budget > 0 && kvPerSeqTotal + actPerSeq > 0) {
+    bMax = Math.floor(budget / (kvPerSeqTotal + actPerSeq));
   }
 
-  return {
-    weightsBytes: weights,
-    kvBytes: kvPerSeq * workload.batchSize,
+  const result: VramBreakdown = {
+    weightsBytes: mainWeights,
+    kvBytes: mainKvPerSeq * workload.batchSize,
     activationBytes: actPerSeq * workload.batchSize,
     overheadBytes,
     totalBytes,
@@ -87,4 +115,12 @@ export function vramBreakdown(
     feasible,
     bMax,
   };
+
+  // Add draft components if SD enabled
+  if (draftWeights !== undefined && draftKvPerSeq !== undefined) {
+    result.draftWeightsBytes = draftWeights;
+    result.draftKvBytes = draftKvPerSeq * workload.batchSize;
+  }
+
+  return result;
 }
