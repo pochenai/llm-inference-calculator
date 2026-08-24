@@ -32,6 +32,11 @@ export function Field({
   );
 }
 
+// Select all text on focus so typing immediately replaces the value.
+function selectAllOnFocus(e: React.FocusEvent<HTMLInputElement>) {
+  e.target.select();
+}
+
 export function NumberField({
   label,
   value,
@@ -67,6 +72,7 @@ export function NumberField({
         placeholder={placeholder}
         disabled={disabled}
         onChange={(e) => onChange(e.target.valueAsNumber)}
+        onFocus={selectAllOnFocus}
       />
     </Field>
   );
