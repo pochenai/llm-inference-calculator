@@ -6,10 +6,18 @@ import type { DerivedConstants } from './model';
 import { qDimOf } from './model';
 import { shardFactors } from './layout';
 
+// PD disaggregation modes for VRAM sizing.
+// 'prefill': only inputLen tokens (no output generated on prefill GPUs).
+// 'decode': inputLen + outputLen/2 (steady-state avg under continuous batching).
+export const PD_PREFILL = 'prefill' as const;
+export const PD_DECODE = 'decode' as const;
+export type PdMode = typeof PD_PREFILL | typeof PD_DECODE;
+
 export interface MemoryOptions {
   flashAttention: boolean;
   headroom: number; // reserved capacity fraction, e.g. 0.1
   overheadBytes?: number; // CUDA context, allocator fragmentation, ...
+  pdMode?: PdMode;
 }
 
 export interface VramBreakdown {
@@ -69,7 +77,17 @@ export function vramBreakdown(
   const overheadBytes = opts.overheadBytes ?? GiB;
   const capacityBytes = gpu.vramGb * 1e9 * (1 - opts.headroom);
 
-  const seqLen = workload.inputLen + workload.outputLen;
+  // PD disaggregation adjusts effective sequence length for KV cache sizing:
+  // - prefill: only inputLen (output tokens never live on prefill GPUs)
+  // - decode: inputLen + outputLen/2 (steady-state avg under continuous batching)
+  let seqLen: number;
+  if (opts.pdMode === PD_PREFILL) {
+    seqLen = workload.inputLen;
+  } else if (opts.pdMode === PD_DECODE) {
+    seqLen = workload.inputLen + Math.ceil(workload.outputLen / 2);
+  } else {
+    seqLen = workload.inputLen + workload.outputLen;
+  }
   const mainKvPerSeq = derived.kv.totalBytes(seqLen) / sf.kvAndActivation;
   const mainActPerSeq =
     activationBytesPerSeq(model, derived, workload, opts.flashAttention) / sf.kvAndActivation;

@@ -12,7 +12,7 @@ import { deriveConstants } from './model';
 import { resolveInterconnect, peakFlopsOf } from './hardware';
 import { validateLayout } from './layout';
 import type { VramBreakdown } from './memory';
-import { vramBreakdown } from './memory';
+import { PD_DECODE, PD_PREFILL, vramBreakdown } from './memory';
 import type { DecodeDetail, PrefillDetail, SdDecodeDetail } from './latency';
 import { buildCommModel, decodeStepTime, prefillTime, sdDecodeStepTime } from './latency';
 
@@ -98,16 +98,16 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
       spec.gpu,
       prefillLayout,
       spec.workload,
-      memOpts,
+      { ...memOpts, pdMode: PD_PREFILL },
     );
-    // SD-aware VRAM for decode pool
+    // SD-aware VRAM for decode pool (steady-state KV: inputLen + outputLen/2)
     memory = vramBreakdown(
       spec.model,
       derived,
       spec.gpu,
       decodeLayout,
       spec.workload,
-      memOpts,
+      { ...memOpts, pdMode: PD_DECODE },
       spec.speculative?.draftModel,
       draftDerived,
       spec.speculative?.draftTp,
