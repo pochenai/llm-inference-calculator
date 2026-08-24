@@ -52,6 +52,8 @@ export const DEFAULT_BATCH_SIZE = 1;
 export const DEFAULT_INPUT_LEN = 1024;
 export const DEFAULT_OUTPUT_LEN = 1024;
 export const DEFAULT_QUANT: QuantPrecision = 'bf16';
+// Re-export from core (single source of truth for calculation defaults).
+export { DEFAULT_PREFILL_RATIO } from '../../core/types';
 
 // --- speculative decoding ---
 // Draft model size range relative to main model (5-10x smaller).

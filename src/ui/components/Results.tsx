@@ -99,7 +99,7 @@ function StatusBanner(props: ResultsProps & { r: EvaluationResult }) {
       <span className="status-detail">
         {model.name}（{model.type === 'moe' ? 'MoE' : 'Dense'} · {model.paramsB}B） on {gpu.name} × {totalGpus}
         {props.disaggOn
-          ? `（${spec.disagg?.prefillGpus ?? 0}P + ${spec.disagg?.decodeGpus ?? 0}D）`
+          ? `（${spec.disagg?.prefillGpus ?? 0}P [batch ${r.prefillBatchSize}] + ${spec.disagg?.decodeGpus ?? 0}D [batch ${r.decodeBatchSize}]）`
           : ''}
       </span>
     </div>
@@ -154,6 +154,13 @@ function LayoutCard(props: ResultsProps) {
     const prefillLayouts = prefillSolved ? sortLayouts(prefillSolved.feasibleLayouts) : [];
     const decodeLayouts = decodeSolved ? sortLayouts(decodeSolved.feasibleLayouts) : [];
 
+    // Optimal PD GPU allocation info
+    const optFrac = props.result.ok ? props.result.value.optimalPrefillFraction : undefined;
+    const optGpus = props.result.ok ? props.result.value.optimalPrefillGpus : undefined;
+    const pGpus = spec.disagg?.prefillGpus ?? 0;
+    const dGpus = spec.disagg?.decodeGpus ?? 0;
+    const totalPdGpus = pGpus + dGpus;
+
     return (
       <div className="card">
         <h3 className="card-title">并行布局（PD 分离）</h3>
@@ -161,6 +168,7 @@ function LayoutCard(props: ResultsProps) {
           <div className="disagg-layout">
             <div className="disagg-pool">
               <b>Prefill 池</b>
+              <span className="muted small">（batch = {props.result.ok ? props.result.value.prefillBatchSize : '–'}）</span>
               {prefillSolved?.chosen === null && (
                 <div className="note err-note">没有可行布局；以下为最接近的参照。</div>
               )}
@@ -184,6 +192,7 @@ function LayoutCard(props: ResultsProps) {
 
             <div className="disagg-pool">
               <b>Decode 池</b>
+              <span className="muted small">（batch = {props.result.ok ? props.result.value.decodeBatchSize : '–'}）</span>
               {decodeSolved?.chosen === null && (
                 <div className="note err-note">没有可行布局；以下为最接近的参照。</div>
               )}
@@ -208,6 +217,17 @@ function LayoutCard(props: ResultsProps) {
           <div className="muted small">
             候选布局受「TP ≤ 每节点 GPU 数（{spec.gpusPerNode}）」约束，按 TP ⇒ EP ⇒ PP 排序
           </div>
+          {optFrac !== undefined && optGpus !== undefined && (
+            <div className="muted small" style={{ marginTop: 6 }}>
+              <b>最优 GPU 分配</b>：Prefill {optGpus} / Decode {totalPdGpus - optGpus}
+              （Prefill 占 {(optFrac * 100).toFixed(1)}%）
+              {optGpus !== pGpus
+                ? ` — 建议调整 Prefill GPU 数为 ${optGpus}`
+                : ' — 当前已最优 ✓'}
+              <br />
+              流水线配平：Prefill 产出速率 = Decode 消耗速率，防止节点饥饿或积压
+            </div>
+          )}
           <SolverIssues issues={[...(prefillSolved?.issues ?? []), ...(decodeSolved?.issues ?? [])]} />
         </div>
       </div>
@@ -258,7 +278,21 @@ function SolverIssues({ issues }: { issues: string[] }) {
   );
 }
 
-function VramBar({ label, mem }: { label?: string; mem: EvaluationResult['memory'] }) {
+function VramBar({
+  label,
+  mem,
+  dp,
+  systemBMax,
+  systemBMaxSteady,
+}: {
+  label?: string;
+  mem: EvaluationResult['memory'];
+  dp?: number;
+  // When this bar represents one pool of a PD pair, show the system-level
+  // bMax that THIS pool limits the system to (bMax_pool / pool_fraction).
+  systemBMax?: number;
+  systemBMaxSteady?: number;
+}) {
   const cap = mem.capacityBytes;
   const segs = [
     { name: '权重', bytes: mem.weightsBytes, cls: 'seg-w' },
@@ -273,6 +307,9 @@ function VramBar({ label, mem }: { label?: string; mem: EvaluationResult['memory
   ];
   const total = mem.totalBytes;
   const scale = total > cap ? cap / total : 1;
+  const d = dp ?? 1;
+  const poolBMax = mem.bMaxFullLen * d;
+  const poolBMaxSteady = mem.bMax * d;
   return (
     <div className="vram-block">
       {label ? <div className="vram-label">{label}</div> : null}
@@ -291,7 +328,12 @@ function VramBar({ label, mem }: { label?: string; mem: EvaluationResult['memory
           {fmtBytes(total)} / {fmtBytes(cap)}（{fmtPct(total / cap)}）
           {mem.feasible ? '' : ' — 超出'}
         </span>
-        <span>最大 Batch size = {fmtInt(mem.bMax)}</span>
+        <span>
+          最大 Batch size：满载 {fmtInt(poolBMax)} / 稳态 {fmtInt(poolBMaxSteady)}
+          {systemBMax !== undefined && systemBMaxSteady !== undefined && (
+            <>{' '}| 系统最大：满载 {fmtInt(systemBMax)} / 稳态 {fmtInt(systemBMaxSteady)}</>
+          )}
+        </span>
       </div>
       <div className="vram-legend">
         {segs.map((s) => (
@@ -306,21 +348,65 @@ function VramBar({ label, mem }: { label?: string; mem: EvaluationResult['memory
 }
 
 function VramCard(props: ResultsProps & { r: EvaluationResult }) {
-  const { r, disaggOn } = props;
+  const { r, disaggOn, spec } = props;
+  // PD: compute system-level bMax from each pool's limit.
+  // systemBMax = min(bMax_prefill / r, bMax_decode / (1-r))
+  // Each pool line shows "if this pool is the bottleneck, system total = bMax_pool / fraction".
+  let pSystemBMax: number | undefined;
+  let pSystemBMaxSteady: number | undefined;
+  let dSystemBMax: number | undefined;
+  let dSystemBMaxSteady: number | undefined;
+  let totalSystemBMax: number | undefined;
+  let totalSystemBMaxSteady: number | undefined;
+  if (disaggOn && spec.disagg) {
+    const pRatio = spec.workload.prefillRatio ?? 0.2;
+    const dRatio = 1 - pRatio;
+    const pDp = spec.disagg.prefillLayout.dp;
+    const dDp = spec.disagg.decodeLayout.dp;
+    const pBMax = r.memoryPrefillPool!.bMaxFullLen * pDp;
+    const pBMaxS = r.memoryPrefillPool!.bMax * pDp;
+    const dBMax = r.memory.bMaxFullLen * dDp;
+    const dBMaxS = r.memory.bMax * dDp;
+    pSystemBMax = Math.floor(pBMax / pRatio);
+    pSystemBMaxSteady = Math.floor(pBMaxS / pRatio);
+    dSystemBMax = Math.floor(dBMax / dRatio);
+    dSystemBMaxSteady = Math.floor(dBMaxS / dRatio);
+    totalSystemBMax = Math.min(pSystemBMax, dSystemBMax);
+    totalSystemBMaxSteady = Math.min(pSystemBMaxSteady, dSystemBMaxSteady);
+  }
   return (
     <div className="card">
       <h3 className="card-title">显存占用（每卡）</h3>
       <div className="card-body">
-        {disaggOn && r.memoryPrefillPool ? (
+        {disaggOn && r.memoryPrefillPool && spec.disagg ? (
           <>
-            <VramBar label="Prefill 池" mem={r.memoryPrefillPool} />
-            <VramBar label="Decode 池" mem={r.memory} />
+            <VramBar
+              label={`Prefill 池（当前 batch ${r.prefillBatchSize}）`}
+              mem={r.memoryPrefillPool}
+              dp={spec.disagg.prefillLayout.dp}
+              {...(pSystemBMax !== undefined && pSystemBMaxSteady !== undefined
+                ? { systemBMax: pSystemBMax, systemBMaxSteady: pSystemBMaxSteady }
+                : {})}
+            />
+            <VramBar
+              label={`Decode 池（当前 batch ${r.decodeBatchSize}）`}
+              mem={r.memory}
+              dp={spec.disagg.decodeLayout.dp}
+              {...(dSystemBMax !== undefined && dSystemBMaxSteady !== undefined
+                ? { systemBMax: dSystemBMax, systemBMaxSteady: dSystemBMaxSteady }
+                : {})}
+            />
+            <div className="muted small">
+              <b>系统总最大 Batch size</b>：满载 {fmtInt(totalSystemBMax!)} / 稳态 {fmtInt(totalSystemBMaxSteady!)}
+              = Min(Prefill/r, Decode/(1−r))
+            </div>
           </>
         ) : (
-          <VramBar mem={r.memory} />
+          <VramBar mem={r.memory} dp={spec.layout.dp} />
         )}
         <div className="muted small">
-          容量已扣除 headroom 预留；最大 batch 为显存约束下可反推的上限。
+          容量已扣除 headroom 预留。<b>满载</b>：所有请求都在最大序列长度（inputLen + outputLen），最保守的硬上限；
+          <b>稳态</b>：请求均匀分布在生成过程中（平均 inputLen + outputLen/2），典型运行时的上限。
         </div>
       </div>
     </div>
@@ -338,12 +424,13 @@ function PhaseCard({
   spec: SystemSpec;
   disaggOn: boolean;
 }) {
-  const B = spec.workload.batchSize;
   const nIn = spec.workload.inputLen;
-  // Prefill throughput: input tokens processed per second (B * N_in / TTFT).
-  const prefillTps = r.ttftMs > 0 ? (B * nIn) / (r.ttftMs / 1e3) : 0;
-  // Decode throughput: generated tokens per second across the batch (B / TPOT).
-  const decodeTps = r.tpotMs > 0 ? B / (r.tpotMs / 1e3) : 0;
+  const Bp = r.prefillBatchSize;
+  const Bd = r.decodeBatchSize;
+  // Prefill throughput: input tokens processed per second (B_p * N_in / TTFT).
+  const prefillTps = r.ttftMs > 0 ? (Bp * nIn) / (r.ttftMs / 1e3) : 0;
+  // Decode throughput: generated tokens per second across the batch (B_d / TPOT).
+  const decodeTps = r.tpotMs > 0 ? Bd / (r.tpotMs / 1e3) : 0;
   return (
     <div className="card">
       <h3 className="card-title">阶段明细</h3>
@@ -352,7 +439,10 @@ function PhaseCard({
         <table className="detail-table">
           <thead>
             <tr>
-              <th colSpan={2}>Prefill（计算受限）</th>
+              <th colSpan={2}>
+                Prefill（计算受限）
+                {disaggOn && <span className="muted small"> — batch {Bp}</span>}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -400,7 +490,10 @@ function PhaseCard({
         <table className="detail-table">
           <thead>
             <tr>
-              <th colSpan={2}>Decode（带宽受限）</th>
+              <th colSpan={2}>
+                Decode（带宽受限）
+                {disaggOn && <span className="muted small"> — batch {Bd}</span>}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -454,6 +547,13 @@ function PhaseCard({
           注：「通信时间（总）」为原始通信量，进入延迟的是其暴露部分 = 总量 ×（1 −
           重叠系数）。重叠系数 = 1（理想模式）时通信被计算完全隐藏，TTFT / TPOT
           不含通信；可在「校准参数」面板调低 TP / EP / PP 通信重叠查看暴露的通信代价。
+          {disaggOn && (
+            <>
+              <br />
+              稳态负载分配：Prefill batch = {Bp}，Decode batch = {Bd}
+              （按输入比例拆分总并发 {Bp + Bd}）。
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -18,6 +18,7 @@
 import type { Calibration } from './calibration';
 import { IDEAL } from './calibration';
 import type { GpuSpec, ModelSpec, ParallelLayout, QuantPrecision, Workload } from './types';
+import type { PdMode } from './memory';
 import { evaluate } from './metrics';
 
 export interface SolverInput {
@@ -35,6 +36,10 @@ export interface SolverInput {
   flashAttention: boolean;
   headroom: number;
   cal?: Calibration;
+  // PD pool type hint: tells the solver to evaluate VRAM as if this layout
+  // belongs to a prefill or decode pool in a PD-disaggregated deployment.
+  // Absent = non-PD (colocated) mode.
+  pdMode?: PdMode;
 }
 
 export interface SolverResult {
@@ -108,6 +113,8 @@ export function solveParallelLayout(input: SolverInput): SolverResult {
         layout,
         flashAttention: input.flashAttention,
         headroom: input.headroom,
+        // Pass PD mode hint so evaluate() uses pool-specific seqLen for VRAM.
+        ...(input.pdMode ? { solverPdMode: input.pdMode } : {}),
       },
       cal,
     );

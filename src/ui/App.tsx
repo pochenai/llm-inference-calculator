@@ -47,6 +47,7 @@ import {
   DEFAULT_INTER_NODE_BW_GBPS,
   DEFAULT_KV_TRANSFER_OVERLAP,
   DEFAULT_OUTPUT_LEN,
+  DEFAULT_PREFILL_RATIO,
   DEFAULT_QUANT,
   MIN_GPUS_FOR_INTER_NODE,
   MIN_GPUS_FOR_PD_DISAGG,
@@ -114,6 +115,7 @@ export default function App() {
   const [inputLen, setInputLen] = useState(DEFAULT_INPUT_LEN);
   const [outputLen, setOutputLen] = useState(DEFAULT_OUTPUT_LEN);
   const [batchSize, setBatchSize] = useState(DEFAULT_BATCH_SIZE);
+  const [prefillRatio, setPrefillRatio] = useState(DEFAULT_PREFILL_RATIO);
   // --- switches / parallelism ---
   const [flashAttention, setFlashAttention] = useState(true);
   const [disaggOn, setDisaggOn] = useState(false);
@@ -199,6 +201,7 @@ export default function App() {
       batchSize: intOr(batchSize, DEFAULT_BATCH_SIZE, 1),
       inputLen: intOr(inputLen, DEFAULT_INPUT_LEN, 1),
       outputLen: intOr(outputLen, DEFAULT_OUTPUT_LEN, 1),
+      prefillRatio: Math.max(0.1, Math.min(0.9, Number.isFinite(prefillRatio) ? prefillRatio : DEFAULT_PREFILL_RATIO)),
     };
     const head = fracOr(headroom, DEFAULT_HEADROOM);
     const calibration: Calibration = {
@@ -260,8 +263,16 @@ export default function App() {
       const dN = intOr(decodeGpus, Math.max(1, nGpus - pN), 1);
       const pDp = Math.min(intOr(prefillDp, 1, 1), pN);
       const dDp = Math.min(intOr(decodeDp, 1, 1), dN);
-      prefillSolved = solveParallelLayout({ ...solverBase, numGpus: pN, dp: pDp });
-      decodeSolved = solveParallelLayout({ ...solverBase, numGpus: dN, dp: dDp });
+      // Build pool-specific workloads with split batch sizes for the solver.
+      // Without this, the solver evaluates layouts against the FULL batch size,
+      // causing false "infeasible" verdicts for the (smaller) prefill pool.
+      const pRatio = workload.prefillRatio ?? DEFAULT_PREFILL_RATIO;
+      const pBatch = Math.max(1, Math.round(pRatio * workload.batchSize));
+      const dBatch = Math.max(1, Math.round((1 - pRatio) * workload.batchSize));
+      const prefillWorkload: Workload = { ...workload, batchSize: pBatch };
+      const decodeWorkload: Workload = { ...workload, batchSize: dBatch };
+      prefillSolved = solveParallelLayout({ ...solverBase, numGpus: pN, dp: pDp, workload: prefillWorkload, pdMode: 'prefill' as const });
+      decodeSolved = solveParallelLayout({ ...solverBase, numGpus: dN, dp: dDp, workload: decodeWorkload, pdMode: 'decode' as const });
 
       // Validate override layouts
       const prefillOverrideValid =
@@ -353,6 +364,7 @@ export default function App() {
     inputLen,
     outputLen,
     batchSize,
+    prefillRatio,
     flashAttention,
     disaggOn,
     prefillGpus,
@@ -538,12 +550,21 @@ export default function App() {
               <NumberField label="输出长度" value={outputLen} onChange={setOutputLen} min={1} />
             </div>
             <NumberField
-              label="Batch size"
+              label="稳态总并发请求数"
               value={batchSize}
               onChange={setBatchSize}
               min={1}
               placeholder={core?.bMaxPlaceholder}
-              hint="占位符为当前配置下显存允许的最大 batch size"
+              hint=""
+            />
+            <NumberField
+              label="稳态 Prefill 比例"
+              value={prefillRatio}
+              onChange={(v) => setPrefillRatio(Math.max(0.1, Math.min(0.9, v || DEFAULT_PREFILL_RATIO)))}
+              min={0.1}
+              max={0.9}
+              step={0.05}
+              hint={`稳态下 prefill 请求占比（decode 自动为 ${(100 - prefillRatio * 100).toFixed(0)}%）；reasoning 模型典型值 0.2`}
             />
           </Section>
 

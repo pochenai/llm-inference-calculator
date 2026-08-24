@@ -94,6 +94,10 @@ export interface Workload {
   batchSize: number;
   inputLen: number;
   outputLen: number;
+  // Steady-state workload composition: fraction of requests in prefill.
+  // Decode fraction is (1 - prefillRatio). Absent defaults to 0.5 (equal split).
+  // Typical reasoning model: ~0.2 (prefill 20%, decode 80%).
+  prefillRatio?: number;
 }
 
 export interface SystemSpec {
@@ -113,7 +117,15 @@ export interface SystemSpec {
   headroom: number; // reserved VRAM fraction, e.g. 0.1
   disagg?: PdDisaggConfig;
   speculative?: SpeculativeConfig; // speculative decoding configuration
+  // Internal hint used by the layout solver: when evaluating a single layout
+  // for a PD pool (without a full disagg config), tells evaluate() which
+  // pool-specific seqLen to use for VRAM sizing. Never set by the UI.
+  solverPdMode?: 'prefill' | 'decode';
 }
 
 export const GB = 1e9;
 export const GiB = 2 ** 30;
+
+// Default steady-state prefill ratio: 0.2 for reasoning models (prefill ~20%,
+// decode ~80% of steady-state requests). Used when Workload.prefillRatio is absent.
+export const DEFAULT_PREFILL_RATIO = 0.2;

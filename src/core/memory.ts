@@ -28,7 +28,8 @@ export interface VramBreakdown {
   totalBytes: number;
   capacityBytes: number; // vram * (1 - headroom)
   feasible: boolean;
-  bMax: number; // max batch under the VRAM constraint
+  bMax: number; // max batch per replica at the steady-state avg sequence length
+  bMaxFullLen: number; // max batch per replica at full length (inputLen + outputLen)
   // Speculative decoding components (present when SD enabled)
   draftWeightsBytes?: number; // draft model weights per GPU
   draftKvBytes?: number; // draft model KV per GPU
@@ -80,13 +81,16 @@ export function vramBreakdown(
   // PD disaggregation adjusts effective sequence length for KV cache sizing:
   // - prefill: only inputLen (output tokens never live on prefill GPUs)
   // - decode: inputLen + outputLen/2 (steady-state avg under continuous batching)
+  // - non-PD: inputLen + outputLen/2 (steady-state avg; prefill and decode share
+  //   the same GPU pool, KV cache is unified; average reflects continuous batching
+  //   where requests are uniformly distributed across generation progress)
   let seqLen: number;
   if (opts.pdMode === PD_PREFILL) {
     seqLen = workload.inputLen;
   } else if (opts.pdMode === PD_DECODE) {
     seqLen = workload.inputLen + Math.ceil(workload.outputLen / 2);
   } else {
-    seqLen = workload.inputLen + workload.outputLen;
+    seqLen = workload.inputLen + Math.ceil(workload.outputLen / 2);
   }
   const mainKvPerSeq = derived.kv.totalBytes(seqLen) / sf.kvAndActivation;
   const mainActPerSeq =
@@ -126,6 +130,15 @@ export function vramBreakdown(
     bMax = Math.floor(budget / (kvPerSeqTotal + actPerSeq));
   }
 
+  // bMaxFullLen: worst-case batch limit at full sequence length (inputLen + outputLen).
+  // This is the hard capacity ceiling — any request can grow up to full length.
+  const fullSeqLen = workload.inputLen + workload.outputLen;
+  const fullKvPerSeq = derived.kv.totalBytes(fullSeqLen) / sf.kvAndActivation;
+  const fullActPerSeq =
+    activationBytesPerSeq(model, derived, workload, opts.flashAttention) / sf.kvAndActivation;
+  const fullPerSeq = fullKvPerSeq + fullActPerSeq;
+  const bMaxFullLen = budget > 0 && fullPerSeq > 0 ? Math.floor(budget / fullPerSeq) : 0;
+
   const result: VramBreakdown = {
     weightsBytes: mainWeights,
     kvBytes: mainKvPerSeq * batchPerReplica,
@@ -135,6 +148,7 @@ export function vramBreakdown(
     capacityBytes,
     feasible,
     bMax,
+    bMaxFullLen,
   };
 
   // Add draft components if SD enabled
