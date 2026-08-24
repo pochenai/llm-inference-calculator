@@ -9,7 +9,7 @@ import { CalcError, err, ok } from './errors';
 import type { Result } from './errors';
 import type { ParallelLayout, SystemSpec } from './types';
 import { deriveConstants } from './model';
-import { resolveInterconnect } from './hardware';
+import { resolveInterconnect, peakFlopsOf } from './hardware';
 import { validateLayout } from './layout';
 import type { VramBreakdown } from './memory';
 import { vramBreakdown } from './memory';
@@ -27,6 +27,13 @@ export interface EvaluationResult {
   tpotMs: number; // SD-adjusted (lower than baseline when SD enabled)
   e2eMs: number; // SD-adjusted
   throughputTps: number; // output tokens per second, system level (SD-adjusted)
+  // Resource utilization metrics
+  prefillComputeUtilization: number; // fraction of time spent on compute (tComputeMs / ttftMs)
+  decodeBandwidthUtilization: number; // fraction of time spent on bandwidth (tBandwidthMs / tpotMs)
+  prefillActualFlops: number; // actual FLOPS achieved (in TFLOPS)
+  prefillPeakFlops: number; // hardware peak FLOPS (in TFLOPS)
+  decodeActualBandwidth: number; // actual bandwidth achieved (in GB/s)
+  decodePeakBandwidth: number; // hardware peak bandwidth (in GB/s)
   // Speculative decoding details (present only when SD enabled)
   speculative?: {
     draftModelId: string;
@@ -211,6 +218,27 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
   const e2eMs = ttftMs + spec.workload.outputLen * tpotMs;
   const throughputTps = (spec.workload.batchSize * spec.workload.outputLen) / (e2eMs / 1e3);
 
+  // Calculate utilization metrics based on hardware peak values (not calibrated)
+  // Prefill: actual FLOPS/s / hardware peak FLOPS/s
+  const numGpus = spec.disagg
+    ? spec.disagg.prefillGpus // Use prefill pool GPUs for prefill calculation
+    : spec.layout.tp * spec.layout.ep * spec.layout.pp * spec.layout.dp;
+  const peakFlopsPerGpu = peakFlopsOf(spec.gpu, spec.weightQuant);
+  const totalPeakFlops = numGpus * peakFlopsPerGpu;
+  const actualFlopsPerSec = ttftMs > 0 ? prefill.flops / (ttftMs / 1e3) : 0;
+  const prefillComputeUtilization = totalPeakFlops > 0 ? actualFlopsPerSec / totalPeakFlops : 0;
+  // Convert to TFLOPS for display
+  const prefillActualFlops = actualFlopsPerSec / 1e12;
+  const prefillPeakFlops = totalPeakFlops / 1e12;
+
+  // Decode: actual bytes/s / hardware peak bytes/s
+  const actualBytesPerSec = tpotMs > 0 ? decode.bytesPerStep / (tpotMs / 1e3) : 0;
+  const peakBytesPerSec = spec.gpu.bwGbps * 1e9;
+  const decodeBandwidthUtilization = peakBytesPerSec > 0 ? actualBytesPerSec / peakBytesPerSec : 0;
+  // Convert to GB/s for display
+  const decodeActualBandwidth = actualBytesPerSec / 1e9;
+  const decodePeakBandwidth = peakBytesPerSec / 1e9;
+
   const result: EvaluationResult = {
     feasible,
     memory,
@@ -221,6 +249,12 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
     tpotMs,
     e2eMs,
     throughputTps,
+    prefillComputeUtilization,
+    decodeBandwidthUtilization,
+    prefillActualFlops,
+    prefillPeakFlops,
+    decodeActualBandwidth,
+    decodePeakBandwidth,
   };
   if (memoryPrefillPool) result.memoryPrefillPool = memoryPrefillPool;
   if (speculativeResult) result.speculative = speculativeResult;

@@ -95,6 +95,8 @@ interface ComputedCore {
   layoutIsOverride: boolean;
   prefillSolved: SolverResult | null;
   decodeSolved: SolverResult | null;
+  prefillLayoutIsOverride: boolean;
+  decodeLayoutIsOverride: boolean;
   warnings: string[];
   bMaxPlaceholder: string | undefined;
 }
@@ -117,10 +119,14 @@ export default function App() {
   const [disaggOn, setDisaggOn] = useState(false);
   const [prefillGpus, setPrefillGpus] = useState(1);
   const [decodeGpus, setDecodeGpus] = useState(1);
+  const [prefillDp, setPrefillDp] = useState(1);
+  const [decodeDp, setDecodeDp] = useState(1);
   const [kvOverlap, setKvOverlap] = useState(DEFAULT_KV_TRANSFER_OVERLAP);
   const [dp, setDp] = useState(1);
   const [ep, setEp] = useState(1);
   const [layoutOverride, setLayoutOverride] = useState<ParallelLayout | null>(null);
+  const [prefillLayoutOverride, setPrefillLayoutOverride] = useState<ParallelLayout | null>(null);
+  const [decodeLayoutOverride, setDecodeLayoutOverride] = useState<ParallelLayout | null>(null);
   // --- speculative decoding ---
   const [sdOn, setSdOn] = useState(false);
   const [draftModelId, setDraftModelId] = useState('');
@@ -252,13 +258,28 @@ export default function App() {
     if (disaggOn) {
       const pN = intOr(prefillGpus, Math.max(1, Math.floor(nGpus / 2)), 1);
       const dN = intOr(decodeGpus, Math.max(1, nGpus - pN), 1);
-      prefillSolved = solveParallelLayout({ ...solverBase, numGpus: pN, dp: 1 });
-      decodeSolved = solveParallelLayout({ ...solverBase, numGpus: dN, dp: 1 });
+      const pDp = Math.min(intOr(prefillDp, 1, 1), pN);
+      const dDp = Math.min(intOr(decodeDp, 1, 1), dN);
+      prefillSolved = solveParallelLayout({ ...solverBase, numGpus: pN, dp: pDp });
+      decodeSolved = solveParallelLayout({ ...solverBase, numGpus: dN, dp: dDp });
+
+      // Validate override layouts
+      const prefillOverrideValid =
+        prefillLayoutOverride !== null &&
+        validateLayout(prefillLayoutOverride, model, pN, nPerNode).length === 0;
+      const decodeOverrideValid =
+        decodeLayoutOverride !== null &&
+        validateLayout(decodeLayoutOverride, model, dN, nPerNode).length === 0;
+
       disagg = {
         prefillGpus: pN,
         decodeGpus: dN,
-        prefillLayout: prefillSolved.chosen ?? prefillSolved.bestEffort ?? FALLBACK_LAYOUT,
-        decodeLayout: decodeSolved.chosen ?? decodeSolved.bestEffort ?? FALLBACK_LAYOUT,
+        prefillLayout: prefillOverrideValid
+          ? prefillLayoutOverride
+          : prefillSolved.chosen ?? prefillSolved.bestEffort ?? FALLBACK_LAYOUT,
+        decodeLayout: decodeOverrideValid
+          ? decodeLayoutOverride
+          : decodeSolved.chosen ?? decodeSolved.bestEffort ?? FALLBACK_LAYOUT,
         kvTransferOverlap: fracOr(kvOverlap, DEFAULT_KV_TRANSFER_OVERLAP),
       };
       if (nGpus < MIN_GPUS_FOR_PD_DISAGG) warnings.push('PD 分离至少需要 2 张 GPU');
@@ -297,6 +318,16 @@ export default function App() {
 
     const result = evaluate(spec, calibration);
 
+    // Calculate override flags for PD disaggregation
+    const prefillLayoutIsOverride =
+      disaggOn &&
+      prefillLayoutOverride !== null &&
+      validateLayout(prefillLayoutOverride, model, intOr(prefillGpus, 1, 1), nPerNode).length === 0;
+    const decodeLayoutIsOverride =
+      disaggOn &&
+      decodeLayoutOverride !== null &&
+      validateLayout(decodeLayoutOverride, model, intOr(decodeGpus, 1, 1), nPerNode).length === 0;
+
     return {
       spec,
       cal: calibration,
@@ -306,6 +337,8 @@ export default function App() {
       layoutIsOverride: overrideValid,
       prefillSolved,
       decodeSolved,
+      prefillLayoutIsOverride,
+      decodeLayoutIsOverride,
       warnings,
       bMaxPlaceholder: result.ok ? String(result.value.memory.bMax) : undefined,
     };
@@ -324,10 +357,14 @@ export default function App() {
     disaggOn,
     prefillGpus,
     decodeGpus,
+    prefillDp,
+    decodeDp,
     kvOverlap,
     dp,
     ep,
     layoutOverride,
+    prefillLayoutOverride,
+    decodeLayoutOverride,
     headroom,
     cal,
     sdOn,
@@ -343,8 +380,8 @@ export default function App() {
   // PD pool bounds: Prefill + Decode must stay within the total GPU count,
   // with at least one GPU kept free for the other pool.
   const nGpusUi = intOr(numGpus, 1, 1);
-  const prefillMax = Math.max(1, nGpusUi - intOr(decodeGpus, 1, 1));
-  const decodeMax = Math.max(1, nGpusUi - intOr(prefillGpus, 1, 1));
+  const prefillMax = Math.max(1, nGpusUi - 1);
+  const decodeMax = prefillMax;
 
   // DP / EP bounds: neither may exceed the GPU count, nor may their product,
   // and both must divide the cluster (DP | N, EP | N/DP). The maxima below
@@ -392,6 +429,18 @@ export default function App() {
     setDecodeGpus(d);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numGpus]);
+
+  // Re-clamp prefill/decode DP when pool GPU counts change.
+  // DP must be <= pool GPU count and must divide it.
+  useEffect(() => {
+    const pGpus = intOr(prefillGpus, 1, 1);
+    const dGpus = intOr(decodeGpus, 1, 1);
+    const pDp = largestDivisorAtMost(pGpus, Math.min(intOr(prefillDp, 1, 1), pGpus));
+    const dDp = largestDivisorAtMost(dGpus, Math.min(intOr(decodeDp, 1, 1), dGpus));
+    setPrefillDp(pDp);
+    setDecodeDp(dDp);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillGpus, decodeGpus]);
 
   // Draft TP max depends on PD disaggregation status:
   // - PD ON: max = decode pool GPUs
@@ -555,20 +604,44 @@ export default function App() {
                   <NumberField
                     label="Prefill GPU 数"
                     value={prefillGpus}
-                    onChange={(v) => setPrefillGpus(Math.min(intOr(v, 1, 1), prefillMax))}
+                    onChange={(v) => {
+                      setPrefillGpus(Math.min(intOr(v, 1, 1), prefillMax))
+                      setDecodeGpus(numGpus - v)
+                    }}
                     min={1}
                     max={prefillMax}
                   />
                   <NumberField
                     label="Decode GPU 数"
                     value={decodeGpus}
-                    onChange={(v) => setDecodeGpus(Math.min(intOr(v, 1, 1), decodeMax))}
+                    onChange={(v) => {
+                      setDecodeGpus(Math.min(intOr(v, 1, 1), decodeMax))
+                      setPrefillGpus(numGpus - v)
+                    }}
                     min={1}
                     max={decodeMax}
                   />
                 </div>
+                <div className="field-grid">
+                  <NumberField
+                    label="Prefill DP"
+                    value={prefillDp}
+                    onChange={(v) => setPrefillDp(Math.min(intOr(v, 1, 1), intOr(prefillGpus, 1, 1)))}
+                    min={1}
+                    max={intOr(prefillGpus, 1, 1)}
+                    hint="Prefill 池的数据并行度"
+                  />
+                  <NumberField
+                    label="Decode DP"
+                    value={decodeDp}
+                    onChange={(v) => setDecodeDp(Math.min(intOr(v, 1, 1), intOr(decodeGpus, 1, 1)))}
+                    min={1}
+                    max={intOr(decodeGpus, 1, 1)}
+                    hint="Decode 池的数据并行度（高 DP 可最大化 TP）"
+                  />
+                </div>
                 <div className="muted small">
-                  两池之和须 ≤ GPU 总数（{nGpusUi}），允许部分 GPU 不分配
+                  两池之和须 ≤ GPU 总数（{nGpusUi}），允许部分 GPU 不分配。DP 须整除对应池的 GPU 数。
                 </div>
                 <div className="field">
                   <span className="field-label">
@@ -787,6 +860,10 @@ export default function App() {
               disaggOn={disaggOn}
               prefillSolved={core.prefillSolved}
               decodeSolved={core.decodeSolved}
+              prefillLayoutIsOverride={core.prefillLayoutIsOverride}
+              decodeLayoutIsOverride={core.decodeLayoutIsOverride}
+              onPickPrefillLayout={setPrefillLayoutOverride}
+              onPickDecodeLayout={setDecodeLayoutOverride}
               warnings={core.warnings}
             />
           ) : (

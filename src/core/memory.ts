@@ -96,19 +96,22 @@ export function vramBreakdown(
     actPerSeq = Math.max(mainActPerSeq, draftActPerSeq);
   }
 
-  const totalBytes = totalWeights + (kvPerSeqTotal + actPerSeq) * workload.batchSize + overheadBytes;
+  // With DP, each replica handles batchSize/dp sequences
+  const batchPerReplica = workload.batchSize / layout.dp;
+  const totalBytes = totalWeights + (kvPerSeqTotal + actPerSeq) * batchPerReplica + overheadBytes;
   const feasible = totalBytes <= capacityBytes;
 
   let bMax: number = 0;
   const budget = capacityBytes - totalWeights - overheadBytes;
   if (budget > 0 && kvPerSeqTotal + actPerSeq > 0) {
+    // bMax is per-GPU, so it's per-replica max batch
     bMax = Math.floor(budget / (kvPerSeqTotal + actPerSeq));
   }
 
   const result: VramBreakdown = {
     weightsBytes: mainWeights,
-    kvBytes: mainKvPerSeq * workload.batchSize,
-    activationBytes: actPerSeq * workload.batchSize,
+    kvBytes: mainKvPerSeq * batchPerReplica,
+    activationBytes: actPerSeq * batchPerReplica,
     overheadBytes,
     totalBytes,
     capacityBytes,
@@ -119,7 +122,7 @@ export function vramBreakdown(
   // Add draft components if SD enabled
   if (draftWeights !== undefined && draftKvPerSeq !== undefined) {
     result.draftWeightsBytes = draftWeights;
-    result.draftKvBytes = draftKvPerSeq * workload.batchSize;
+    result.draftKvBytes = draftKvPerSeq * batchPerReplica;
   }
 
   return result;

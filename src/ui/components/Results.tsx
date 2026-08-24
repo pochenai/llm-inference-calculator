@@ -26,6 +26,10 @@ export interface ResultsProps {
   disaggOn: boolean;
   prefillSolved: SolverResult | null;
   decodeSolved: SolverResult | null;
+  prefillLayoutIsOverride: boolean;
+  decodeLayoutIsOverride: boolean;
+  onPickPrefillLayout: (l: ParallelLayout | null) => void;
+  onPickDecodeLayout: (l: ParallelLayout | null) => void;
   warnings: string[];
 }
 
@@ -122,18 +126,87 @@ function MetricTiles({ r }: { r: EvaluationResult }) {
 }
 
 function LayoutCard(props: ResultsProps) {
-  const { solved, effectiveLayout, layoutIsOverride, onPickLayout, disaggOn, prefillSolved, decodeSolved } = props;
+  const {
+    solved,
+    effectiveLayout,
+    onPickLayout,
+    disaggOn,
+    prefillSolved,
+    decodeSolved,
+    onPickPrefillLayout,
+    onPickDecodeLayout,
+    spec,
+  } = props;
+
+  // Sort layouts by TP (desc) => EP (desc) => PP (desc), DP is fixed
+  function sortLayouts(layouts: ParallelLayout[]): ParallelLayout[] {
+    return [...layouts].sort((a, b) => {
+      if (b.tp !== a.tp) return b.tp - a.tp;
+      if (b.ep !== a.ep) return b.ep - a.ep;
+      return b.pp - a.pp;
+    });
+  }
 
   if (disaggOn) {
+    const prefillLayout = spec.disagg?.prefillLayout ?? { tp: 1, pp: 1, ep: 1, dp: 1 };
+    const decodeLayout = spec.disagg?.decodeLayout ?? { tp: 1, pp: 1, ep: 1, dp: 1 };
+
+    const prefillLayouts = prefillSolved ? sortLayouts(prefillSolved.feasibleLayouts) : [];
+    const decodeLayouts = decodeSolved ? sortLayouts(decodeSolved.feasibleLayouts) : [];
+
     return (
       <div className="card">
         <h3 className="card-title">并行布局（PD 分离）</h3>
         <div className="card-body">
-          <div className="kv">
-            <span>Prefill 池</span>
-            <b>{prefillSolved ? layoutLabel(prefillSolved.chosen ?? prefillSolved.bestEffort ?? { tp: 1, pp: 1, ep: 1, dp: 1 }) : '–'}</b>
-            <span>Decode 池</span>
-            <b>{decodeSolved ? layoutLabel(decodeSolved.chosen ?? decodeSolved.bestEffort ?? { tp: 1, pp: 1, ep: 1, dp: 1 }) : '–'}</b>
+          <div className="disagg-layout">
+            <div className="disagg-pool">
+              <b>Prefill 池</b>
+              {prefillSolved?.chosen === null && (
+                <div className="note err-note">没有可行布局；以下为最接近的参照。</div>
+              )}
+              {prefillLayouts.length > 0 ? (
+                <div className="chip-row">
+                  {prefillLayouts.map((l) => (
+                    <button
+                      key={layoutLabel(l)}
+                      type="button"
+                      className={`chip${sameLayout(l, prefillLayout) ? ' active' : ''}`}
+                      onClick={() => onPickPrefillLayout(l)}
+                    >
+                      {layoutLabel(l)}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="muted small">无可用布局。</div>
+              )}
+            </div>
+
+            <div className="disagg-pool">
+              <b>Decode 池</b>
+              {decodeSolved?.chosen === null && (
+                <div className="note err-note">没有可行布局；以下为最接近的参照。</div>
+              )}
+              {decodeLayouts.length > 0 ? (
+                <div className="chip-row">
+                  {decodeLayouts.map((l) => (
+                    <button
+                      key={layoutLabel(l)}
+                      type="button"
+                      className={`chip${sameLayout(l, decodeLayout) ? ' active' : ''}`}
+                      onClick={() => onPickDecodeLayout(l)}
+                    >
+                      {layoutLabel(l)}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="muted small">无可用布局。</div>
+              )}
+            </div>
+          </div>
+          <div className="muted small">
+            候选布局受「TP ≤ 每节点 GPU 数（{spec.gpusPerNode}）」约束，按 TP ⇒ EP ⇒ PP 排序
           </div>
           <SolverIssues issues={[...(prefillSolved?.issues ?? []), ...(decodeSolved?.issues ?? [])]} />
         </div>
@@ -141,26 +214,17 @@ function LayoutCard(props: ResultsProps) {
     );
   }
 
-  const alternatives = solved.feasibleLayouts.filter((l) => !sameLayout(l, solved.chosen ?? { tp: -1, pp: -1, ep: -1, dp: -1 }));
+  // Sort layouts by TP (desc) => EP (desc) => PP (desc), DP is fixed
+  const allLayouts = sortLayouts(solved.feasibleLayouts);
+
   return (
     <div className="card">
-      <h3 className="card-title">并行布局（自动求解）</h3>
+      <h3 className="card-title">并行布局</h3>
       <div className="card-body">
-        <div className="layout-current">
-          <b>{layoutLabel(effectiveLayout)}</b>
-          <span className="muted">
-            （TP×EP×PP×DP = {effectiveLayout.tp * effectiveLayout.ep * effectiveLayout.pp * effectiveLayout.dp} GPU）
-          </span>
-          {layoutIsOverride && (
-            <button type="button" className="linklike" onClick={() => onPickLayout(null)}>
-              回到自动
-            </button>
-          )}
-        </div>
         {solved.chosen === null && <div className="note err-note">没有任何布局能装下当前配置；以下为最接近的参照。</div>}
-        {alternatives.length > 0 && (
+        {allLayouts.length > 0 ? (
           <div className="chip-row">
-            {alternatives.map((l) => (
+            {allLayouts.map((l) => (
               <button
                 key={layoutLabel(l)}
                 type="button"
@@ -171,12 +235,11 @@ function LayoutCard(props: ResultsProps) {
               </button>
             ))}
           </div>
-        )}
-        {alternatives.length === 0 && solved.feasibleLayouts.length > 0 && (
-          <div className="muted small">当前为唯一可行布局。</div>
+        ) : (
+          <div className="muted small">无可用布局。</div>
         )}
         <div className="muted small">
-          候选布局受「TP ≤ 每节点 GPU 数（{props.spec.gpusPerNode}）」约束
+          候选布局受「TP ≤ 每节点 GPU 数（{props.spec.gpusPerNode}）」约束，按 TP ⇒ EP ⇒ PP 排序
         </div>
         <SolverIssues issues={solved.issues} />
       </div>
@@ -323,6 +386,15 @@ function PhaseCard({
                 <td>{fmtMs(r.kvTransferExposedMs)}</td>
               </tr>
             )}
+            <tr>
+              <td>算力利用率</td>
+              <td>
+                <b>{fmtPct(r.prefillComputeUtilization)}</b>
+                <div className="muted small">
+                  {r.prefillActualFlops.toFixed(1)} / {r.prefillPeakFlops.toFixed(1)} TFLOPS
+                </div>
+              </td>
+            </tr>
           </tbody>
         </table>
         <table className="detail-table">
@@ -364,6 +436,15 @@ function PhaseCard({
               <td>吞吐（输出 token/s）</td>
               <td>
                 <b>{fmtTps(decodeTps)}</b>
+              </td>
+            </tr>
+            <tr>
+              <td>带宽利用率</td>
+              <td>
+                <b>{fmtPct(r.decodeBandwidthUtilization)}</b>
+                <div className="muted small">
+                  {r.decodeActualBandwidth.toFixed(0)} / {r.decodePeakBandwidth.toFixed(0)} GB/s
+                </div>
               </td>
             </tr>
           </tbody>

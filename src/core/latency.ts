@@ -62,7 +62,8 @@ export interface PhaseInput {
 
 export function prefillTime(inp: PhaseInput, numGpus: number): PrefillDetail {
   const { model, derived, gpu, layout, workload, cal, comm } = inp;
-  const B = workload.batchSize;
+  // With DP, each replica handles batchSize/dp sequences
+  const B = workload.batchSize / layout.dp;
   const nIn = workload.inputLen;
 
   const flopsMatmul = B * nIn * derived.flopsPerToken;
@@ -136,7 +137,8 @@ export interface DecodeDetail {
 
 export function decodeStepTime(inp: PhaseInput, sHistoryOverride?: number): DecodeDetail {
   const { model, derived, gpu, layout, workload, cal, comm } = inp;
-  const B = workload.batchSize;
+  // With DP, each replica handles batchSize/dp sequences
+  const B = workload.batchSize / layout.dp;
   // Average history length across the N_out generation steps
   // (history grows from N_in + 1 to N_in + N_out).
   const sHistory = sHistoryOverride ?? workload.inputLen + (workload.outputLen + 1) / 2;

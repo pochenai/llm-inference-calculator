@@ -531,6 +531,35 @@ input[type='range'] {
   font-size: 14px;
 }
 
+.layout-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.disagg-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 800px) {
+  .disagg-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.disagg-pool {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
 .muted {
   color: var(--muted);
 }
