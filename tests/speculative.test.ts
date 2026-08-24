@@ -301,6 +301,59 @@ describe('speculative decoding integration', () => {
     expect(result.speculative).toBeDefined();
     expect(result.speculative!.speedup).toBeGreaterThan(1);
   });
+
+  it('SD with PD disaggregation: draft only in decode pool', () => {
+    // PD disaggregation with SD: draft model only in decode pool
+    const specSdDisagg: SystemSpec = {
+      model: llama70b,
+      gpu: h100,
+      gpusPerNode: 8,
+      interNodeBwGbps: 50,
+      workload: { batchSize: 8, inputLen: 2048, outputLen: 512 },
+      weightQuant: 'fp16',
+      kvQuant: 'fp16',
+      layout: { tp: 4, pp: 1, ep: 1, dp: 1 },
+      flashAttention: true,
+      headroom: 0.1,
+      disagg: {
+        prefillGpus: 4,
+        decodeGpus: 4,
+        prefillLayout: { tp: 4, pp: 1, ep: 1, dp: 1 },
+        decodeLayout: { tp: 4, pp: 1, ep: 1, dp: 1 },
+        kvTransferOverlap: 0.8,
+      },
+      speculative: {
+        draftModel: llama8b,
+        draftTp: 4, // Max = decodeGpus = 4
+        gamma: 5,
+        acceptanceRate: 0.7,
+      },
+    };
+
+    // Create a copy without speculative for baseline comparison
+    const { speculative: _, ...specNoSdDisagg } = specSdDisagg;
+
+    const resultSd = evaluate(specSdDisagg);
+    const resultNoSd = evaluate(specNoSdDisagg as SystemSpec);
+
+    // KV transfer should be the same (only main KV transferred, draft prefill in decode pool)
+    expect(resultSd.kvTransferExposedMs).toBeCloseTo(resultNoSd.kvTransferExposedMs, 3);
+
+    // Prefill pool VRAM should be the same (only main model)
+    expect(resultSd.memoryPrefillPool!.totalBytes).toBeCloseTo(
+      resultNoSd.memoryPrefillPool!.totalBytes,
+      3,
+    );
+
+    // Decode pool VRAM should be higher with SD (main + draft)
+    expect(resultSd.memory.totalBytes).toBeGreaterThan(resultNoSd.memory.totalBytes);
+    expect(resultSd.memory.draftWeightsBytes).toBeDefined();
+    expect(resultSd.memory.draftKvBytes).toBeDefined();
+
+    // Draft TP should be limited to decodeGpus
+    expect(resultSd.speculative).toBeDefined();
+    expect(resultSd.speculative!.speedup).toBeGreaterThan(1);
+  });
 });
 
 describe('sdDecodeStepTime function', () => {

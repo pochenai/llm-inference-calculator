@@ -108,6 +108,8 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
 
     // KV cache shipped from prefill pool to decode pool after prefill,
     // at sequence length N_in.
+    // Only main model's KV is transferred; draft model does its own prefill
+    // in the decode pool (small enough to be negligible).
     const kvBytes = derived.kv.totalBytes(spec.workload.inputLen) * spec.workload.batchSize;
     const kvTransferMs = (kvBytes / comm.interBwBps) * 1e3;
     kvTransferExposedMs = kvTransferMs * (1 - d.kvTransferOverlap);

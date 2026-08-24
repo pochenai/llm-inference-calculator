@@ -18,6 +18,8 @@
   --seg-kv: #74c0fc;
   --seg-act: #b197fc;
   --seg-ov: #ced4da;
+  --seg-draft-w: #f59f00;
+  --seg-draft-kv: #fcc419;
   --radius: 10px;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 }
@@ -375,6 +377,19 @@ input[type='range'] {
   gap: 10px;
 }
 
+.sd-extra {
+  border-left: 2px solid var(--border);
+  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.err-hint {
+  color: var(--err);
+}
+
 /* ---------- collapse ---------- */
 
 .collapse-head {
@@ -596,6 +611,14 @@ input[type='range'] {
 
 .seg-ov {
   background: var(--seg-ov);
+}
+
+.seg-draft-w {
+  background: var(--seg-draft-w);
+}
+
+.seg-draft-kv {
+  background: var(--seg-draft-kv);
 }
 
 .vram-meta {

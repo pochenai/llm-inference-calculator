@@ -19,11 +19,13 @@ import type { Calibration } from '../core/calibration';
 import type {
   ParallelLayout,
   QuantPrecision,
+  SpeculativeConfig,
   SystemSpec,
   Workload,
 } from '../core/types';
 import type { Result } from '../core/errors';
 import type { EvaluationResult } from '../core/metrics';
+import { suggestDraftModel } from '../data/models/suggest';
 import { SearchSelect } from './components/SearchSelect';
 import type { SearchOption } from './components/SearchSelect';
 import {
@@ -49,6 +51,10 @@ import {
   MIN_GPUS_FOR_INTER_NODE,
   MIN_GPUS_FOR_PD_DISAGG,
   MIN_GPUS_FOR_PER_NODE,
+  SD_RATIO_MIN,
+  SD_RATIO_MAX,
+  DEFAULT_GAMMA,
+  DEFAULT_ACCEPTANCE_RATE,
 } from './lib/constants';
 
 const QUANT_OPTIONS: { value: QuantPrecision; label: string; sub: string }[] = [
@@ -115,6 +121,12 @@ export default function App() {
   const [dp, setDp] = useState(1);
   const [ep, setEp] = useState(1);
   const [layoutOverride, setLayoutOverride] = useState<ParallelLayout | null>(null);
+  // --- speculative decoding ---
+  const [sdOn, setSdOn] = useState(false);
+  const [draftModelId, setDraftModelId] = useState('');
+  const [draftTp, setDraftTp] = useState(1);
+  const [gamma, setGamma] = useState(DEFAULT_GAMMA);
+  const [acceptanceRate, setAcceptanceRate] = useState(DEFAULT_ACCEPTANCE_RATE);
   // --- calibration ---
   const [calOpen, setCalOpen] = useState(false);
   const [headroom, setHeadroom] = useState(DEFAULT_HEADROOM);
@@ -144,6 +156,26 @@ export default function App() {
         })),
     [],
   );
+
+  // Draft model options: models in the SD size range (5-10x smaller than main)
+  const draftModelOptions = useMemo<SearchOption[]>(() => {
+    const main = ALL_MODELS[modelId];
+    if (!main) return [];
+    const minP = main.paramsB * SD_RATIO_MIN;
+    const maxP = main.paramsB * SD_RATIO_MAX;
+    return Object.values(ALL_MODELS)
+      .filter((m) => m.paramsB >= minP && m.paramsB <= maxP && m.id !== main.id)
+      .sort((a, b) => b.paramsB - a.paramsB)
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        tag: m.type === 'moe' ? 'MoE' : 'Dense',
+        sub: `${m.paramsB}B（主模型 ${main.paramsB}B 的 ${Math.round((m.paramsB / main.paramsB) * 100)}%）`,
+      }));
+  }, [modelId]);
+
+  // Max draft TP: total GPUs or decode pool GPUs (if PD disaggregation)
+  const maxDraftTp = disaggOn ? intOr(decodeGpus, 1, 1) : intOr(numGpus, 1, 1);
 
   const core = useMemo<ComputedCore | null>(() => {
     const model = ALL_MODELS[modelId];
@@ -249,6 +281,20 @@ export default function App() {
       headroom: head,
       ...(disagg ? { disagg } : {}),
     };
+
+    // Speculative decoding: add draft model config if enabled
+    if (sdOn && draftModelId && ALL_MODELS[draftModelId]) {
+      const draftModel = ALL_MODELS[draftModelId];
+      const maxDraftTp = disaggOn ? intOr(decodeGpus, 1, 1) : nGpus;
+      const sdConfig: SpeculativeConfig = {
+        draftModel,
+        draftTp: Math.min(intOr(draftTp, 1, 1), maxDraftTp),
+        gamma: intOr(gamma, DEFAULT_GAMMA, 1),
+        acceptanceRate: fracOr(acceptanceRate, DEFAULT_ACCEPTANCE_RATE),
+      };
+      spec.speculative = sdConfig;
+    }
+
     const result = evaluate(spec, calibration);
 
     return {
@@ -284,6 +330,11 @@ export default function App() {
     layoutOverride,
     headroom,
     cal,
+    sdOn,
+    draftModelId,
+    draftTp,
+    gamma,
+    acceptanceRate,
   ]);
 
   const model = ALL_MODELS[modelId];
@@ -341,6 +392,16 @@ export default function App() {
     setDecodeGpus(d);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numGpus]);
+
+  // Draft TP max depends on PD disaggregation status:
+  // - PD ON: max = decode pool GPUs
+  // - PD OFF: max = total GPUs
+  // Re-clamp draftTp when these dependencies change.
+  useEffect(() => {
+    const maxDraftTp = disaggOn ? intOr(decodeGpus, 1, 1) : intOr(numGpus, 1, 1);
+    setDraftTp(Math.min(intOr(draftTp, 1, 1), maxDraftTp));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disaggOn, decodeGpus, numGpus]);
 
   function setCalField(k: keyof Calibration, v: number) {
     setCal((c) => ({ ...c, [k]: v }));
@@ -525,6 +586,80 @@ export default function App() {
                     KV 传输时间与 prefill 计算重叠（被隐藏）的比例：0 = 完全串行暴露在
                     TTFT 中，1 = 完全隐藏；有逐层流水的现代引擎约 0.8 ~ 1
                   </span>
+                </div>
+              </div>
+            )}
+          </Section>
+
+          <Section title="投机采样 (Speculative Decoding)">
+            <Toggle
+              label="启用投机采样"
+              desc="小模型草稿 + 大模型验证，降低 TPOT"
+              checked={sdOn}
+              onChange={(v) => {
+                setSdOn(v);
+                if (v && !draftModelId) {
+                  // Auto-suggest draft model on first enable
+                  const main = ALL_MODELS[modelId];
+                  if (main) {
+                    const suggestion = suggestDraftModel(main, ALL_MODELS, SD_RATIO_MIN, SD_RATIO_MAX);
+                    if (suggestion) {
+                      setDraftModelId(suggestion.id);
+                      // Default draft TP = main TP, capped by max
+                      const mainTp = core?.effectiveLayout.tp ?? 1;
+                      setDraftTp(Math.min(mainTp, maxDraftTp));
+                    }
+                  }
+                }
+              }}
+            />
+            {sdOn && (
+              <div className="sd-extra">
+                <div className="field">
+                  <span className="field-label">草稿模型（Draft Model）</span>
+                  <SearchSelect
+                    options={draftModelOptions}
+                    value={draftModelId}
+                    onChange={setDraftModelId}
+                    placeholder={draftModelOptions.length > 0 ? '选择草稿模型' : '无可用草稿模型'}
+                  />
+                  {draftModelOptions.length === 0 && (
+                    <span className="field-hint err-hint">
+                      模型库中没有适合当前主模型的草稿模型（需要 {Math.round(ALL_MODELS[modelId]?.paramsB ?? 0 * SD_RATIO_MIN)}B
+                      ~ {Math.round(ALL_MODELS[modelId]?.paramsB ?? 0 * SD_RATIO_MAX)}B 的 dense 模型）
+                    </span>
+                  )}
+                </div>
+                <NumberField
+                  label="Draft TP"
+                  value={draftTp}
+                  onChange={(v) => setDraftTp(Math.min(intOr(v, 1, 1), maxDraftTp))}
+                  min={1}
+                  max={maxDraftTp}
+                  hint="草稿模型的张量并行度（仅支持 TP，默认跟随主模型 TP）"
+                />
+                <div className="field-grid">
+                  <NumberField
+                    label="γ（草稿步数）"
+                    value={gamma}
+                    onChange={setGamma}
+                    min={1}
+                    max={16}
+                    hint="每次验证前草稿模型生成的 token 数，典型 4–8"
+                  />
+                  <NumberField
+                    label="接受率"
+                    value={acceptanceRate}
+                    onChange={setAcceptanceRate}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    hint="草稿 token 被主模型接受的概率；取决于模型配对，通常 0.5–0.9"
+                  />
+                </div>
+                <div className="muted small">
+                  Draft 和 Main 模型同时在 GPU 内存中；Draft 仅支持 TP 并行，不支持 PP/EP/DP。
+                  Draft TP 默认跟随主模型 TP，最大值 = {disaggOn ? 'Decode' : ''} GPU 总数（{maxDraftTp}）。
                 </div>
               </div>
             )}

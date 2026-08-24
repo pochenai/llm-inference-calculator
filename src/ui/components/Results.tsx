@@ -57,6 +57,7 @@ export function Results(props: ResultsProps) {
       <LayoutCard {...props} />
       <VramCard {...props} r={r} />
       <PhaseCard r={r} model={props.model} spec={props.spec} disaggOn={props.disaggOn} />
+      {r.speculative && <SpeculativeCard speculative={r.speculative} />}
       <Suspense
         fallback={
           <div className="card">
@@ -201,6 +202,11 @@ function VramBar({ label, mem }: { label?: string; mem: EvaluationResult['memory
     { name: 'KV cache', bytes: mem.kvBytes, cls: 'seg-kv' },
     { name: '激活', bytes: mem.activationBytes, cls: 'seg-act' },
     { name: '开销', bytes: mem.overheadBytes, cls: 'seg-ov' },
+    // Draft model segments (only present when SD enabled)
+    ...(mem.draftWeightsBytes
+      ? [{ name: 'Draft 权重', bytes: mem.draftWeightsBytes, cls: 'seg-draft-w' }]
+      : []),
+    ...(mem.draftKvBytes ? [{ name: 'Draft KV', bytes: mem.draftKvBytes, cls: 'seg-draft-kv' }] : []),
   ];
   const total = mem.totalBytes;
   const scale = total > cap ? cap / total : 1;
@@ -382,6 +388,84 @@ function Warnings(props: ResultsProps) {
           ⚠ {w}
         </div>
       ))}
+    </div>
+  );
+}
+
+function SpeculativeCard({ speculative }: { speculative: NonNullable<EvaluationResult['speculative']> }) {
+  return (
+    <div className="card">
+      <h3 className="card-title">投机采样明细</h3>
+      <div className="card-body">
+        <div className="phase-grid">
+          <table className="detail-table">
+            <thead>
+              <tr>
+                <th colSpan={2}>草稿模型</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>模型</td>
+                <td>{speculative.draftModelName}</td>
+              </tr>
+              <tr>
+                <td>γ（草稿步数）</td>
+                <td>{speculative.gamma}</td>
+              </tr>
+              <tr>
+                <td>接受率</td>
+                <td>{fmtPct(speculative.acceptanceRate)}</td>
+              </tr>
+              <tr>
+                <td>每周期期望 token</td>
+                <td>{speculative.expectedTokensPerCycle.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <table className="detail-table">
+            <thead>
+              <tr>
+                <th colSpan={2}>时序分析</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>草稿步时间</td>
+                <td>{fmtMs(speculative.draftStepMs)}</td>
+              </tr>
+              <tr>
+                <td>验证步时间</td>
+                <td>{fmtMs(speculative.verifyStepMs)}</td>
+              </tr>
+              <tr>
+                <td>周期时间</td>
+                <td>{fmtMs(speculative.cycleTimeMs)}</td>
+              </tr>
+              <tr>
+                <td>TPOT（投机）</td>
+                <td>
+                  <b>{fmtMs(speculative.verifyStepMs / speculative.expectedTokensPerCycle + speculative.draftStepMs * speculative.gamma / speculative.expectedTokensPerCycle)}</b>
+                </td>
+              </tr>
+              <tr>
+                <td>TPOT（基线）</td>
+                <td>{fmtMs(speculative.baselineTpotMs)}</td>
+              </tr>
+              <tr>
+                <td>加速比</td>
+                <td>
+                  <b>{speculative.speedup.toFixed(2)}×</b>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="muted small">
+          投机采样通过小模型（Draft）生成候选 token，大模型（Main）并行验证，从而降低每 token
+          生成时间（TPOT）。Draft 和 Main 模型同时在 GPU 内存中；Draft 仅支持 TP 并行。
+        </div>
+      </div>
     </div>
   );
 }

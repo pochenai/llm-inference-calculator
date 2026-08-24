@@ -52,3 +52,10 @@ export const DEFAULT_BATCH_SIZE = 1;
 export const DEFAULT_INPUT_LEN = 1024;
 export const DEFAULT_OUTPUT_LEN = 1024;
 export const DEFAULT_QUANT: QuantPrecision = 'bf16';
+
+// --- speculative decoding ---
+// Draft model size range relative to main model (5-10x smaller).
+export const SD_RATIO_MIN = 0.1; // 10x smaller
+export const SD_RATIO_MAX = 0.2; // 5x smaller
+export const DEFAULT_GAMMA = 5; // draft steps per verification round
+export const DEFAULT_ACCEPTANCE_RATE = 0.7; // typical acceptance rate
