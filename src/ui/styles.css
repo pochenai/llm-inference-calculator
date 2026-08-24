@@ -421,6 +421,12 @@ input[type='range'] {
   color: var(--accent);
 }
 
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .linklike {
   border: none;
   background: transparent;

@@ -37,7 +37,7 @@ import {
 import { Results } from './components/Results';
 import { fmtCtx } from './lib/format';
 import {
-  AUTO_PER_NODE_ABOVE,
+  CALIBRATED_PRESET,
   DEFAULT_BATCH_SIZE,
   DEFAULT_GPUS_PER_NODE,
   DEFAULT_HEADROOM,
@@ -70,6 +70,14 @@ function intOr(v: number, fallback: number, min: number): number {
 function fracOr(v: number, fallback: number): number {
   if (!Number.isFinite(v)) return fallback;
   return Math.min(1, Math.max(0, v));
+}
+
+// Largest divisor of n that is <= cap (n, cap >= 1).
+function largestDivisorAtMost(n: number, cap: number): number {
+  for (let d = Math.min(cap, n); d >= 1; d--) {
+    if (n % d === 0) return d;
+  }
+  return 1;
 }
 
 interface ComputedCore {
@@ -110,7 +118,7 @@ export default function App() {
   // --- calibration ---
   const [calOpen, setCalOpen] = useState(false);
   const [headroom, setHeadroom] = useState(DEFAULT_HEADROOM);
-  const [cal, setCal] = useState<Calibration>({ ...IDEAL });
+  const [cal, setCal] = useState<Calibration>({ ...CALIBRATED_PRESET });
 
   const modelOptions = useMemo<SearchOption[]>(
     () =>
@@ -176,8 +184,12 @@ export default function App() {
       model,
       gpu,
       gpusPerNode: nPerNode,
-      dp: Math.min(intOr(dp, 1, 1), nGpus),
-      ep: Math.min(intOr(ep, 1, 1), Math.max(1, Math.floor(nGpus / Math.min(intOr(dp, 1, 1), nGpus)))),
+      // Same bounds as the input layer: <= N, product <= N, and both divide N.
+      dp: largestDivisorAtMost(nGpus, Math.min(intOr(dp, 1, 1), nGpus)),
+      ep: largestDivisorAtMost(
+        Math.max(1, Math.floor(nGpus / largestDivisorAtMost(nGpus, Math.min(intOr(dp, 1, 1), nGpus)))),
+        Math.min(intOr(ep, 1, 1), nGpus),
+      ),
       intraNodeBwGbps: intraBw,
       interNodeBwGbps: interBw,
       workload,
@@ -283,28 +295,33 @@ export default function App() {
   const prefillMax = Math.max(1, nGpusUi - intOr(decodeGpus, 1, 1));
   const decodeMax = Math.max(1, nGpusUi - intOr(prefillGpus, 1, 1));
 
-  // DP / EP bounds: neither may exceed the GPU count, nor may their product.
-  const dpMax = Math.max(1, Math.floor(nGpusUi / intOr(ep, 1, 1)));
-  const epMax = Math.max(1, Math.floor(nGpusUi / intOr(dp, 1, 1)));
+  // DP / EP bounds: neither may exceed the GPU count, nor may their product,
+  // and both must divide the cluster (DP | N, EP | N/DP). The maxima below
+  // are themselves valid values.
+  const dpMax = largestDivisorAtMost(nGpusUi, Math.floor(nGpusUi / intOr(ep, 1, 1)));
+  const epReplica = Math.max(1, Math.floor(nGpusUi / intOr(dp, 1, 1)));
+  const epMax = epReplica;
 
   // EP only applies to MoE models: keep it pinned to 1 for dense models.
   useEffect(() => {
     if (ALL_MODELS[modelId]?.type !== 'moe') setEp(1);
   }, [modelId]);
 
-  // GPUs-per-node rules: default to 8 once the cluster exceeds 8 GPUs, and
-  // never let it grow past the total GPU count.
+  // GPUs-per-node default, re-applied whenever the total changes:
+  // 8 once the cluster reaches 8 GPUs, otherwise the cluster itself fits in
+  // one node so the default equals the total.
   useEffect(() => {
     const n = intOr(numGpus, 1, 1);
-    if (n > AUTO_PER_NODE_ABOVE) setGpusPerNode(DEFAULT_GPUS_PER_NODE);
-    else setGpusPerNode((p) => Math.min(intOr(p, DEFAULT_GPUS_PER_NODE, 1), n));
+    setGpusPerNode(Math.min(n, DEFAULT_GPUS_PER_NODE));
   }, [numGpus]);
 
-  // DP / EP must each fit in the cluster, and so must their product.
+  // DP / EP must each fit in the cluster, their product must fit, and both
+  // must divide it (DP | N, EP | N/DP). Re-clamp when the total changes.
   useEffect(() => {
     const n = intOr(numGpus, 1, 1);
-    const d = Math.min(intOr(dp, 1, 1), n);
-    const e = Math.min(intOr(ep, 1, 1), Math.max(1, Math.floor(n / d)));
+    const d = largestDivisorAtMost(n, Math.min(intOr(dp, 1, 1), n));
+    const replica = Math.max(1, Math.floor(n / d));
+    const e = largestDivisorAtMost(replica, Math.min(intOr(ep, 1, 1), replica));
     setDp(d);
     setEp(e);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -425,14 +442,18 @@ export default function App() {
               <NumberField
                 label="DP"
                 value={dp}
-                onChange={(v) => setDp(Math.min(intOr(v, 1, 1), dpMax))}
+                onChange={(v) =>
+                  setDp(largestDivisorAtMost(nGpusUi, Math.min(intOr(v, 1, 1), dpMax)))
+                }
                 min={1}
                 max={dpMax}
               />
               <NumberField
                 label="EP"
                 value={ep}
-                onChange={(v) => setEp(Math.min(intOr(v, 1, 1), epMax))}
+                onChange={(v) =>
+                  setEp(largestDivisorAtMost(epReplica, Math.min(intOr(v, 1, 1), epMax)))
+                }
                 min={1}
                 max={epMax}
                 disabled={!isMoe}
@@ -441,7 +462,7 @@ export default function App() {
             </div>
             <div className="muted small" style={{ marginBottom: 8 }}>
               TP / PP 由求解器自动决定（DP ⇒ TP ⇒ EP ⇒ PP，优先保证显存装下）；
-              DP、EP 及两者乘积均不超过 GPU 总数
+              DP、EP 及两者乘积均不超过 GPU 总数，且须整除总数（非法值自动吸附到最近的合法约数）
             </div>
             <div className="toggle-stack">
               <Toggle
@@ -511,7 +532,7 @@ export default function App() {
 
           <CollapseSection
             title="校准参数（高级）"
-            summary={calOpen ? undefined : '默认理想值：全部效率 = 1'}
+            summary={calOpen ? undefined : '默认：校准值（calibration/README.md 锚点）'}
             open={calOpen}
             onToggle={() => setCalOpen((v) => !v)}
           >
@@ -589,16 +610,30 @@ export default function App() {
                 placeholder={String(DEFAULT_ALPHA_INTER_MS)}
               />
             </div>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                setCal({ ...IDEAL });
-                setHeadroom(DEFAULT_HEADROOM);
-              }}
-            >
-              重置为理想值
-            </button>
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn"
+                title="性能上界：全部效率 = 1，仅显存预留保持 0.1"
+                onClick={() => {
+                  setCal({ ...IDEAL });
+                  setHeadroom(DEFAULT_HEADROOM);
+                }}
+              >
+                重置为理想值
+              </button>
+              <button
+                type="button"
+                className="btn"
+                title="按 calibration/README.md 锚点取最大值"
+                onClick={() => {
+                  setCal({ ...CALIBRATED_PRESET });
+                  setHeadroom(DEFAULT_HEADROOM);
+                }}
+              >
+                重置为校准值
+              </button>
+            </div>
           </CollapseSection>
         </aside>
 

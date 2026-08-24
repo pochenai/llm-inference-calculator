@@ -174,6 +174,9 @@ function LayoutCard(props: ResultsProps) {
         {alternatives.length === 0 && solved.feasibleLayouts.length > 0 && (
           <div className="muted small">当前为唯一可行布局。</div>
         )}
+        <div className="muted small">
+          候选布局受「TP ≤ 每节点 GPU 数（{props.spec.gpusPerNode}）」约束
+        </div>
         <SolverIssues issues={solved.issues} />
       </div>
     </div>
@@ -275,7 +278,8 @@ function PhaseCard({
   return (
     <div className="card">
       <h3 className="card-title">阶段明细</h3>
-      <div className="card-body phase-grid">
+      <div className="card-body">
+        <div className="phase-grid">
         <table className="detail-table">
           <thead>
             <tr>
@@ -358,6 +362,12 @@ function PhaseCard({
             </tr>
           </tbody>
         </table>
+        </div>
+        <div className="muted small">
+          注：「通信时间（总）」为原始通信量，进入延迟的是其暴露部分 = 总量 ×（1 −
+          重叠系数）。重叠系数 = 1（理想模式）时通信被计算完全隐藏，TTFT / TPOT
+          不含通信；可在「校准参数」面板调低 TP / EP / PP 通信重叠查看暴露的通信代价。
+        </div>
       </div>
     </div>
   );

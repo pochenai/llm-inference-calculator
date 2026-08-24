@@ -11,8 +11,16 @@ export function fmtBytes(bytes: number): string {
   return `${(bytes / 1e3).toFixed(1)} KB`;
 }
 
-export function fmtMs(ms: number): string {
+export function fmtMs(ms: number, opts?: { forceUnit?: string }): string {
   if (!Number.isFinite(ms)) return '–';
+  // If a unit is forced, always output that unit.
+  if (opts?.forceUnit === 's') {
+    const sec = ms / 1000;
+    if (sec < 0.001) return `${(sec * 1e6).toFixed(0)}µs`;
+    if (sec < 1) return `${sec.toFixed(2)}s`;
+    if (sec < 60) return `${sec.toFixed(2)}s`;
+    return `${(sec / 60).toFixed(1)}min`;
+  }
   if (ms < 1) return `${(ms * 1000).toFixed(0)} µs`;
   if (ms < 1000) return `${ms.toFixed(ms < 10 ? 2 : 1)} ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(2)} s`;

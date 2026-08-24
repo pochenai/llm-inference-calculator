@@ -1,6 +1,7 @@
 // UI-level defaults and display thresholds (single source of truth).
 
 import type { QuantPrecision } from '../../core/types';
+import type { Calibration } from '../../core/calibration';
 
 // --- GPU-count display thresholds ---
 // Per-node GPU count and inter-node interconnect only matter once the cluster
@@ -11,14 +12,34 @@ export const MIN_GPUS_FOR_PD_DISAGG = 2; // show the PD-disaggregation toggle
 
 // --- per-node defaults ---
 // 8 is the de-facto standard node size (NVIDIA HGX/DGX baseboards).
+// The UI default is min(total GPUs, 8), re-applied on every GPU-count change.
 export const DEFAULT_GPUS_PER_NODE = 8;
-// Once the cluster is larger than this, gpus-per-node defaults back to 8.
-export const AUTO_PER_NODE_ABOVE = 8;
 
 // --- PD disaggregation ---
 // Fraction of the KV transfer hidden by overlap with prefill compute.
 // Modern engines pipeline the transfer layer-by-layer, so ~0.8-1 is realistic.
 export const DEFAULT_KV_TRANSFER_OVERLAP = 0.8;
+
+// --- calibrated preset (the UI default) ---
+// Anchors from calibration/README.md (v0, order-of-magnitude), taking the
+// maximum where a range is given:
+//   mfuPrefill   0.6   anchors ~0.17 (llama.cpp) / ~0.5 (TRT-LLM) -> max
+//   bwEffDecode  0.55  anchor ~0.53
+//   *CommOverlap 0.5   README "conservative start ≈ 0.5"
+//   alpha        README defaults when unmeasured
+// commEff* have no README anchor yet; 0.9 reflects typical NCCL
+// large-message efficiency until nccl-tests numbers replace it.
+export const CALIBRATED_PRESET: Calibration = {
+  mfuPrefill: 0.6,
+  bwEffDecode: 0.55,
+  commEffIntra: 0.9,
+  commEffInter: 0.9,
+  tpCommOverlap: 0.5,
+  epCommOverlap: 0.5,
+  ppCommOverlap: 0.5,
+  alphaIntraMs: 0.01,
+  alphaInterMs: 0.03,
+};
 
 // --- memory ---
 export const DEFAULT_HEADROOM = 0.1; // reserved VRAM fraction

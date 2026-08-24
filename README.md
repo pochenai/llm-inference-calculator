@@ -11,7 +11,7 @@ LLM 推理的静态性能模型。给定一组「模型 + GPU + 互连带宽 + �
 
 1. **不建模 Continuous Batching（连续批处理）与 Paged Attention（分页注意力）**：假设一个 batch 的输入一次性全部送入、一次性计算完成。序列长度 uniform，没有请求的动态进出，也没有 padding 开销。这两项工程优化主要解决显存碎片和动态序列长度问题，在 uniform batch 假设下不影响吞吐结论。
 2. **量化单一精度**：整个模型的所有权重量化到同一精度（FP4 / FP8 / FP16 / FP32 之一），用单一的每参数字节数描述。Key-Value（KV）cache 的精度作为独立参数，可选与权重不同。
-3. **单 batch 一次流过**：prefill 和 decode 严格串行，不存在两阶段混跑占用的问题（详见附录对旧问题 1 的归档）。
+3. **单 batch 一次流过**：prefill 和 decode 严格串行，不存在两阶段混跑占用的问题（详见附录对旧问题 1 的归档）。由此本模型只评估**单请求视角**：TTFT 仅由 GPU 总数决定（总 FLOPs ÷ 总算力），与布局形态无关——增加 PP 不会降低 TTFT，PP 的作用是显存分片（装下模型）与跨节点扩展；真实服务系统中 PP + Chunked Prefill 对吞吐与尾部延迟（P99）的收益来自 continuous batching 调度层（长短请求混跑、队头阻塞消除），不在本假设范围内。
 4. **多节点结果不追求精确**：单节点做严格校准，多节点只加一个低阶校正因子（见第八节）。
 5. **流水线（PP）bubble 不建模**：真实调度会用更细的 microbatch 切分、交错执行、chunked prefill 等手段大幅压缩流水线填充/排空空洞，`(B+pp-1)/B` 这类悲观估计会明显高估。理想值模型假设 bubble ≈ 0；只把阶段间 P2P 激活搬运计入 TTFT（见通信代价通用模型）。
 6. **激活显存粗估**：开 FlashAttention 时 activations 近似为单个 `O(N×h)` 残差 buffer；关 FlashAttention 时再叠加 `N²` 注意力分数矩阵（真实的 OOM 悬崖）。不精确建模真实 buffer 个数与碎片——相对权重 + KV，激活是小项；与「调度低效」不同，激活是真实物理占用，理想模型保留其下界而非置零。
@@ -442,7 +442,10 @@ UI 交互约定：
 - batch size 输入框的占位符为当前配置下显存反推的 B_max；
 - FlashAttention 默认开启；PD 分离（Prefill-Decode Disaggregation）默认关闭，
   开启后 prefill / decode 池各自独立求解布局；
-- 校准参数默认理想值（`IDEAL`，全部效率 = 1），高级面板可覆盖。
+- 校准参数默认取**校准值预设**（按 [`calibration/README.md`](./calibration/README.md)
+  锚点取最大值：MFU_prefill 0.5、BW_eff_decode 0.53、TP / EP / PP 通信重叠各 0.5、
+  α 节点内 0.01 / 节点间 0.03、通信效率各 0.9）；高级面板提供两个预设按钮：
+  「重置为理想值」（全部效率 = 1，看性能极限）与「重置为校准值」，各参数均可手动覆盖。
 
 ## 附录：旧问题归档
 
