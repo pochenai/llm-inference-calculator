@@ -2,7 +2,7 @@
 // All computation runs client-side against the pure core (src/core).
 
 import { useEffect, useMemo, useState } from 'react';
-import { ALL_MODELS } from '../data/models';
+import { ALL_MODELS, MODEL_SIZE_TIER, SIZE_TIERS } from '../data/models';
 import { ALL_GPUS } from '../data/gpus/nvidia';
 import { INTRA_NODES_CONNECTION, INTER_NODES_CONNECTION } from '../data/network';
 import { evaluate } from '../core/metrics';
@@ -144,14 +144,27 @@ export default function App() {
     () =>
       Object.values(ALL_MODELS)
         .sort((a, b) => a.paramsB - b.paramsB)
-        .map((m) => ({
-          id: m.id,
-          name: m.name,
-          tag: m.type === 'moe' ? 'MoE' : 'Dense',
-          sub: `${m.paramsB}B${m.moe ? ` · 激活 ${m.moe.activeParamsB}B` : ''} · ctx ${fmtCtx(m.maxCtx)}`,
-        })),
+        .map((m) => {
+          const tier = MODEL_SIZE_TIER.get(m.id);
+          return {
+            id: m.id,
+            name: m.name,
+            tag: m.type === 'moe' ? 'MoE' : 'Dense',
+            sub: `${m.paramsB}B${m.moe ? ` · 激活 ${m.moe.activeParamsB}B` : ''} · ctx ${fmtCtx(m.maxCtx)}`,
+            ...(tier ? { category: tier } : {}),
+          };
+        }),
     [],
   );
+
+  // Only show size tiers that have at least one model in the catalog.
+  const modelSizeCategories = useMemo(() => {
+    const used = new Set(modelOptions.map((o) => o.category));
+    return SIZE_TIERS.filter((t) => used.has(t.value)).map((t) => ({
+      value: t.value,
+      label: t.label,
+    }));
+  }, [modelOptions]);
 
   const gpuOptions = useMemo<SearchOption[]>(
     () =>
@@ -480,7 +493,7 @@ export default function App() {
           <Section title="模型与 GPU">
             <div className="field">
               <span className="field-label">模型</span>
-              <SearchSelect options={modelOptions} value={modelId} onChange={setModelId} />
+              <SearchSelect options={modelOptions} value={modelId} onChange={setModelId} categories={modelSizeCategories} />
             </div>
             <div className="field">
               <span className="field-label">GPU</span>

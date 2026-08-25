@@ -1,4 +1,5 @@
 // Searchable single-select dropdown (used for model / GPU catalogs).
+// Spaces in the query act as wildcards: "qwen 4b" matches "Qwen3.5 4B".
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -7,6 +8,12 @@ export interface SearchOption {
   name: string;
   sub?: string; // secondary line with key specs
   tag?: string; // small badge, e.g. MoE / Dense
+  category?: string; // for filtering via category chips
+}
+
+export interface SearchCategory {
+  value: string;
+  label: string;
 }
 
 interface Props {
@@ -14,22 +21,36 @@ interface Props {
   value: string;
   onChange: (id: string) => void;
   placeholder?: string;
+  // When provided, a row of filter chips is shown above the search input.
+  // "All" is prepended automatically.
+  categories?: SearchCategory[];
 }
 
 const MAX_RENDER = 400;
 
-export function SearchSelect({ options, value, onChange, placeholder }: Props) {
+export function SearchSelect({ options, value, onChange, placeholder, categories }: Props) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [activeCat, setActiveCat] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const current = options.find((o) => o.id === value);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((o) => `${o.name} ${o.id}`.toLowerCase().includes(q));
-  }, [options, query]);
+    let list = options;
+
+    // Apply category filter first
+    if (activeCat) {
+      list = list.filter((o) => o.category === activeCat);
+    }
+
+    // Spaces act as wildcards: "qwen 4b" → /qwen.*4b/i → matches "Qwen3.5 4B"
+    const q = query.trim();
+    if (!q) return list;
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(escaped.replace(/\s+/g, '.*'), 'i');
+    return list.filter((o) => re.test(`${o.name} ${o.id}`));
+  }, [options, query, activeCat]);
 
   useEffect(() => {
     function onDocPointerDown(e: MouseEvent) {
@@ -39,8 +60,31 @@ export function SearchSelect({ options, value, onChange, placeholder }: Props) {
     return () => document.removeEventListener('mousedown', onDocPointerDown);
   }, []);
 
+  const hasCats = categories && categories.length > 0;
+
   return (
     <div className="search-select" ref={rootRef}>
+      {hasCats && (
+        <div className="size-chip-row">
+          <button
+            type="button"
+            className={`size-chip${activeCat === null ? ' active' : ''}`}
+            onClick={() => setActiveCat(null)}
+          >
+            All
+          </button>
+          {categories.map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              className={`size-chip${activeCat === c.value ? ' active' : ''}`}
+              onClick={() => setActiveCat(c.value)}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      )}
       <input
         className="input"
         value={open ? query : current?.name ?? ''}

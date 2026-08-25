@@ -196,6 +196,38 @@ input[type='range'] {
   position: relative;
 }
 
+/* Size filter chips (shown above the model search input) */
+.size-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.size-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-family: var(--mono);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.size-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.size-chip.active {
+  background: var(--text);
+  border-color: var(--text);
+  color: #fff;
+  font-weight: 700;
+}
+
 .search-list {
   position: absolute;
   z-index: 30;
