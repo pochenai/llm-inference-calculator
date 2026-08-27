@@ -61,6 +61,34 @@ body {
   font-size: 12.5px;
 }
 
+/* GitHub link pushed to the right edge of the header */
+.gh-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 12.5px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.gh-link:hover {
+  color: var(--fg);
+  background-color: var(--hover, rgba(0, 0, 0, 0.05));
+}
+
+.gh-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.gh-text {
+  line-height: 1;
+}
+
 /* ---------- two-column layout ---------- */
 
 .columns {
