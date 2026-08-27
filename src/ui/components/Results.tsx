@@ -7,6 +7,7 @@ import type { GpuSpec, ModelSpec, ParallelLayout, SystemSpec } from '../../core/
 import type { SolverResult } from '../../core/solver';
 import type { Calibration } from '../../core/calibration';
 import { fmtBytes, fmtInt, fmtMs, fmtPct, fmtTps } from '../lib/format';
+import { useI18n } from '../lib/i18n';
 
 // Lazy-loaded so recharts does not land in the initial bundle.
 const BatchSweepChart = lazy(async () => ({
@@ -43,10 +44,12 @@ function sameLayout(a: ParallelLayout, b: ParallelLayout): boolean {
 
 export function Results(props: ResultsProps) {
   const { result } = props;
+  const { t } = useI18n();
+
   if (!result.ok) {
     return (
       <div className="card status-card err">
-        <strong>无法计算</strong>
+        <strong>{t('error.cannot_compute')}</strong>
         <span className="status-detail">
           [{result.error.code}] {result.error.message}
         </span>
@@ -65,7 +68,7 @@ export function Results(props: ResultsProps) {
       <Suspense
         fallback={
           <div className="card">
-            <div className="muted small">加载图表…</div>
+            <div className="muted small">{t('label.loading_chart')}</div>
           </div>
         }
       >
@@ -78,14 +81,16 @@ export function Results(props: ResultsProps) {
 
 function StatusBanner(props: ResultsProps & { r: EvaluationResult }) {
   const { r, model, gpu, spec } = props;
+  const { t } = useI18n();
+
   if (!r.feasible) {
     const over = r.memory.totalBytes - r.memory.capacityBytes;
     return (
       <div className="card status-card err">
-        <strong>显存不足（单卡超出 {fmtBytes(Math.max(0, over))}）</strong>
+        <strong>{t('error.oom', { overBytes: fmtBytes(Math.max(0, over)) })}</strong>
         <span className="status-detail">
-          {model.name} @ {spec.weightQuant.toUpperCase()} / {gpu.name} —
-          试试更低量化、更多 GPU、更高 EP/PP，或减小 batch / 序列长度。
+          {model.name} @ {spec.weightQuant.toUpperCase()} / {gpu.name} —{' '}
+          {t('hint.oom')}
         </span>
       </div>
     );
@@ -95,7 +100,7 @@ function StatusBanner(props: ResultsProps & { r: EvaluationResult }) {
     : spec.layout.tp * spec.layout.ep * spec.layout.pp * spec.layout.dp;
   return (
     <div className="card status-card ok">
-      <strong>可部署</strong>
+      <strong>{t('status.deployable')}</strong>
       <span className="status-detail">
         {model.name}（{model.type === 'moe' ? 'MoE' : 'Dense'} · {model.paramsB}B） on {gpu.name} × {totalGpus}
         {props.disaggOn
@@ -107,18 +112,19 @@ function StatusBanner(props: ResultsProps & { r: EvaluationResult }) {
 }
 
 function MetricTiles({ r }: { r: EvaluationResult }) {
+  const { t } = useI18n();
   const tiles = [
-    { label: 'TTFT（首 token）', value: fmtMs(r.ttftMs) },
-    { label: 'TPOT（每 token）', value: fmtMs(r.tpotMs) },
-    { label: '端到端延迟', value: fmtMs(r.e2eMs) },
-    { label: '系统吞吐', value: `${fmtTps(r.throughputTps)} tok/s` },
+    { label: t('metric.ttft'), value: fmtMs(r.ttftMs) },
+    { label: t('metric.tpot'), value: fmtMs(r.tpotMs) },
+    { label: t('metric.e2e'), value: fmtMs(r.e2eMs) },
+    { label: t('metric.throughput'), value: `${fmtTps(r.throughputTps)} tok/s` },
   ];
   return (
     <div className="metric-grid">
-      {tiles.map((t) => (
-        <div className="card metric-tile" key={t.label}>
-          <span className="metric-value">{t.value}</span>
-          <span className="metric-label">{t.label}</span>
+      {tiles.map((tile) => (
+        <div className="card metric-tile" key={tile.label}>
+          <span className="metric-value">{tile.value}</span>
+          <span className="metric-label">{tile.label}</span>
         </div>
       ))}
     </div>
@@ -137,6 +143,7 @@ function LayoutCard(props: ResultsProps) {
     onPickDecodeLayout,
     spec,
   } = props;
+  const { t } = useI18n();
 
   // Sort layouts by TP (desc) => EP (desc) => PP (desc), DP is fixed
   function sortLayouts(layouts: ParallelLayout[]): ParallelLayout[] {
@@ -163,14 +170,14 @@ function LayoutCard(props: ResultsProps) {
 
     return (
       <div className="card">
-        <h3 className="card-title">并行布局（PD 分离）</h3>
+        <h3 className="card-title">{t('title.layout_pd')}</h3>
         <div className="card-body">
           <div className="disagg-layout">
             <div className="disagg-pool">
-              <b>Prefill 池</b>
+              <b>{t('label.prefill_pool')}</b>
               <span className="muted small">（batch = {props.result.ok ? props.result.value.prefillBatchSize : '–'}）</span>
               {prefillSolved?.chosen === null && (
-                <div className="note err-note">没有可行布局；以下为最接近的参照。</div>
+                <div className="note err-note">{t('note.no_feasible_layout')}</div>
               )}
               {prefillLayouts.length > 0 ? (
                 <div className="chip-row">
@@ -186,15 +193,15 @@ function LayoutCard(props: ResultsProps) {
                   ))}
                 </div>
               ) : (
-                <div className="muted small">无可用布局。</div>
+                <div className="muted small">{t('note.no_layout')}</div>
               )}
             </div>
 
             <div className="disagg-pool">
-              <b>Decode 池</b>
+              <b>{t('label.decode_pool')}</b>
               <span className="muted small">（batch = {props.result.ok ? props.result.value.decodeBatchSize : '–'}）</span>
               {decodeSolved?.chosen === null && (
-                <div className="note err-note">没有可行布局；以下为最接近的参照。</div>
+                <div className="note err-note">{t('note.no_feasible_layout')}</div>
               )}
               {decodeLayouts.length > 0 ? (
                 <div className="chip-row">
@@ -210,22 +217,22 @@ function LayoutCard(props: ResultsProps) {
                   ))}
                 </div>
               ) : (
-                <div className="muted small">无可用布局。</div>
+                <div className="muted small">{t('note.no_layout')}</div>
               )}
             </div>
           </div>
           <div className="muted small">
-            候选布局受「TP ≤ 每节点 GPU 数（{spec.gpusPerNode}）」约束，按 TP ⇒ EP ⇒ PP 排序
+            {t('note.layout_constraint', { gpusPerNode: spec.gpusPerNode })}
           </div>
           {optFrac !== undefined && optGpus !== undefined && (
             <div className="muted small" style={{ marginTop: 6 }}>
-              <b>最优 GPU 分配</b>：Prefill {optGpus} / Decode {totalPdGpus - optGpus}
-              （Prefill 占 {(optFrac * 100).toFixed(1)}%）
+              <b>{t('label.optimal_gpu_alloc')}</b>：Prefill {optGpus} / Decode {totalPdGpus - optGpus}
+              （Prefill {(optFrac * 100).toFixed(1)}%）
               {optGpus !== pGpus
-                ? ` — 建议调整 Prefill GPU 数为 ${optGpus}`
-                : ' — 当前已最优 ✓'}
+                ? t('note.suggest_prefill', { optGpus })
+                : t('note.optimal_current')}
               <br />
-              流水线配平：Prefill 产出速率 = Decode 消耗速率，防止节点饥饿或积压
+              {t('note.pipeline_balance')}
             </div>
           )}
           <SolverIssues issues={[...(prefillSolved?.issues ?? []), ...(decodeSolved?.issues ?? [])]} />
@@ -239,9 +246,9 @@ function LayoutCard(props: ResultsProps) {
 
   return (
     <div className="card">
-      <h3 className="card-title">并行布局</h3>
+      <h3 className="card-title">{t('title.layout')}</h3>
       <div className="card-body">
-        {solved.chosen === null && <div className="note err-note">没有任何布局能装下当前配置；以下为最接近的参照。</div>}
+        {solved.chosen === null && <div className="note err-note">{t('note.no_layout_fits')}</div>}
         {allLayouts.length > 0 ? (
           <div className="chip-row">
             {allLayouts.map((l) => (
@@ -256,10 +263,10 @@ function LayoutCard(props: ResultsProps) {
             ))}
           </div>
         ) : (
-          <div className="muted small">无可用布局。</div>
+          <div className="muted small">{t('note.no_layout')}</div>
         )}
         <div className="muted small">
-          候选布局受「TP ≤ 每节点 GPU 数（{props.spec.gpusPerNode}）」约束，按 TP ⇒ EP ⇒ PP 排序
+          {t('note.layout_constraint', { gpusPerNode: props.spec.gpusPerNode })}
         </div>
         <SolverIssues issues={solved.issues} />
       </div>
@@ -293,17 +300,18 @@ function VramBar({
   systemBMax?: number;
   systemBMaxSteady?: number;
 }) {
+  const { t } = useI18n();
   const cap = mem.capacityBytes;
   const segs = [
-    { name: '权重', bytes: mem.weightsBytes, cls: 'seg-w' },
-    { name: 'KV cache', bytes: mem.kvBytes, cls: 'seg-kv' },
-    { name: '激活', bytes: mem.activationBytes, cls: 'seg-act' },
-    { name: '开销', bytes: mem.overheadBytes, cls: 'seg-ov' },
+    { name: t('seg.weights'), bytes: mem.weightsBytes, cls: 'seg-w' },
+    { name: t('seg.kv'), bytes: mem.kvBytes, cls: 'seg-kv' },
+    { name: t('seg.activation'), bytes: mem.activationBytes, cls: 'seg-act' },
+    { name: t('seg.overhead'), bytes: mem.overheadBytes, cls: 'seg-ov' },
     // Draft model segments (only present when SD enabled)
     ...(mem.draftWeightsBytes
-      ? [{ name: 'Draft 权重', bytes: mem.draftWeightsBytes, cls: 'seg-draft-w' }]
+      ? [{ name: t('seg.draft_weights'), bytes: mem.draftWeightsBytes, cls: 'seg-draft-w' }]
       : []),
-    ...(mem.draftKvBytes ? [{ name: 'Draft KV', bytes: mem.draftKvBytes, cls: 'seg-draft-kv' }] : []),
+    ...(mem.draftKvBytes ? [{ name: t('seg.draft_kv'), bytes: mem.draftKvBytes, cls: 'seg-draft-kv' }] : []),
   ];
   const total = mem.totalBytes;
   const scale = total > cap ? cap / total : 1;
@@ -325,13 +333,18 @@ function VramBar({
       </div>
       <div className="vram-meta">
         <span>
-          {fmtBytes(total)} / {fmtBytes(cap)}（{fmtPct(total / cap)}）
-          {mem.feasible ? '' : ' — 超出'}
+          {t('label.vram_usage', { total: fmtBytes(total), cap: fmtBytes(cap), pct: fmtPct(total / cap) })}
+          {mem.feasible ? '' : t('label.over_capacity')}
         </span>
         <span>
-          最大 Batch size：满载 {fmtInt(poolBMax)} / 稳态 {fmtInt(poolBMaxSteady)}
+          {t('label.max_batch_full', { poolBMax: fmtInt(poolBMax), poolBMaxSteady: fmtInt(poolBMaxSteady) })}
           {systemBMax !== undefined && systemBMaxSteady !== undefined && (
-            <>{' '}| 系统最大：满载 {fmtInt(systemBMax)} / 稳态 {fmtInt(systemBMaxSteady)}</>
+            <>
+              {t('label.system_max_batch', {
+                systemBMax: fmtInt(systemBMax),
+                systemBMaxSteady: fmtInt(systemBMaxSteady),
+              })}
+            </>
           )}
         </span>
       </div>
@@ -349,6 +362,8 @@ function VramBar({
 
 function VramCard(props: ResultsProps & { r: EvaluationResult }) {
   const { r, disaggOn, spec } = props;
+  const { t } = useI18n();
+
   // PD: compute system-level bMax from each pool's limit.
   // systemBMax = min(bMax_prefill / r, bMax_decode / (1-r))
   // Each pool line shows "if this pool is the bottleneck, system total = bMax_pool / fraction".
@@ -376,12 +391,12 @@ function VramCard(props: ResultsProps & { r: EvaluationResult }) {
   }
   return (
     <div className="card">
-      <h3 className="card-title">显存占用（每卡）</h3>
+      <h3 className="card-title">{t('title.vram')}</h3>
       <div className="card-body">
         {disaggOn && r.memoryPrefillPool && spec.disagg ? (
           <>
             <VramBar
-              label={`Prefill 池（当前 batch ${r.prefillBatchSize}）`}
+              label={t('label.prefill_pool_batch', { batch: r.prefillBatchSize })}
               mem={r.memoryPrefillPool}
               dp={spec.disagg.prefillLayout.dp}
               {...(pSystemBMax !== undefined && pSystemBMaxSteady !== undefined
@@ -389,7 +404,7 @@ function VramCard(props: ResultsProps & { r: EvaluationResult }) {
                 : {})}
             />
             <VramBar
-              label={`Decode 池（当前 batch ${r.decodeBatchSize}）`}
+              label={t('label.decode_pool_batch', { batch: r.decodeBatchSize })}
               mem={r.memory}
               dp={spec.disagg.decodeLayout.dp}
               {...(dSystemBMax !== undefined && dSystemBMaxSteady !== undefined
@@ -397,16 +412,17 @@ function VramCard(props: ResultsProps & { r: EvaluationResult }) {
                 : {})}
             />
             <div className="muted small">
-              <b>系统总最大 Batch size</b>：满载 {fmtInt(totalSystemBMax!)} / 稳态 {fmtInt(totalSystemBMaxSteady!)}
-              = Min(Prefill/r, Decode/(1−r))
+              <b>{t('label.system_total_max_batch', {
+                totalSystemBMax: fmtInt(totalSystemBMax!),
+                totalSystemBMaxSteady: fmtInt(totalSystemBMaxSteady!),
+              })}</b>
             </div>
           </>
         ) : (
           <VramBar mem={r.memory} dp={spec.layout.dp} />
         )}
         <div className="muted small">
-          容量已扣除 headroom 预留。<b>满载</b>：所有请求都在最大序列长度（inputLen + outputLen），最保守的硬上限；
-          <b>稳态</b>：请求均匀分布在生成过程中（平均 inputLen + outputLen/2），典型运行时的上限。
+          {t('note.vram_capacity')}
         </div>
       </div>
     </div>
@@ -424,6 +440,7 @@ function PhaseCard({
   spec: SystemSpec;
   disaggOn: boolean;
 }) {
+  const { t } = useI18n();
   const nIn = spec.workload.inputLen;
   const Bp = r.prefillBatchSize;
   const Bd = r.decodeBatchSize;
@@ -433,29 +450,29 @@ function PhaseCard({
   const decodeTps = r.tpotMs > 0 ? Bd / (r.tpotMs / 1e3) : 0;
   return (
     <div className="card">
-      <h3 className="card-title">阶段明细</h3>
+      <h3 className="card-title">{t('title.phase')}</h3>
       <div className="card-body">
         <div className="phase-grid">
         <table className="detail-table">
           <thead>
             <tr>
               <th colSpan={2}>
-                Prefill（计算受限）
+                {t('phase.prefill')}
                 {disaggOn && <span className="muted small"> — batch {Bp}</span>}
               </th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>总 FLOPs</td>
+              <td>{t('label.total_flops')}</td>
               <td>{(r.prefill.flops / 1e12).toFixed(1)} TFLOP</td>
             </tr>
             <tr>
-              <td>计算时间</td>
+              <td>{t('label.compute_time')}</td>
               <td>{fmtMs(r.prefill.tComputeMs)}</td>
             </tr>
             <tr>
-              <td>通信时间（总）</td>
+              <td>{t('label.comm_time_total')}</td>
               <td>{fmtMs(r.prefill.tCommMs)}</td>
             </tr>
             <tr>
@@ -465,19 +482,19 @@ function PhaseCard({
               </td>
             </tr>
             <tr>
-              <td>吞吐（输入 token/s）</td>
+              <td>{t('label.throughput_input')}</td>
               <td>
                 <b>{fmtTps(prefillTps)}</b>
               </td>
             </tr>
             {disaggOn && r.kvTransferExposedMs > 0 && (
               <tr>
-                <td>KV 传输（暴露）</td>
+                <td>{t('label.kv_transfer_exposed')}</td>
                 <td>{fmtMs(r.kvTransferExposedMs)}</td>
               </tr>
             )}
             <tr>
-              <td>算力利用率</td>
+              <td>{t('label.compute_util')}</td>
               <td>
                 <b>{fmtPct(r.prefillComputeUtilization)}</b>
                 <div className="muted small">
@@ -491,31 +508,31 @@ function PhaseCard({
           <thead>
             <tr>
               <th colSpan={2}>
-                Decode（带宽受限）
+                {t('phase.decode')}
                 {disaggOn && <span className="muted small"> — batch {Bd}</span>}
               </th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>权重读取 / 卡·步</td>
+              <td>{t('label.weight_read')}</td>
               <td>{fmtBytes(r.decode.weightsReadBytes)}</td>
             </tr>
             <tr>
-              <td>KV 读取 / 卡·步</td>
+              <td>{t('label.kv_read')}</td>
               <td>{fmtBytes(r.decode.kvReadBytes)}</td>
             </tr>
             <tr>
-              <td>带宽时间</td>
+              <td>{t('label.bandwidth_time')}</td>
               <td>{fmtMs(r.decode.tBandwidthMs)}</td>
             </tr>
             <tr>
-              <td>通信时间（总）</td>
+              <td>{t('label.comm_time_total')}</td>
               <td>{fmtMs(r.decode.tCommMs)}</td>
             </tr>
             {model.type === 'moe' && (
               <tr>
-                <td>专家覆盖率</td>
+                <td>{t('label.expert_coverage')}</td>
                 <td>{fmtPct(r.decode.expertCoverage)}</td>
               </tr>
             )}
@@ -526,13 +543,13 @@ function PhaseCard({
               </td>
             </tr>
             <tr>
-              <td>吞吐（输出 token/s）</td>
+              <td>{t('label.throughput_output')}</td>
               <td>
                 <b>{fmtTps(decodeTps)}</b>
               </td>
             </tr>
             <tr>
-              <td>带宽利用率</td>
+              <td>{t('label.bandwidth_util')}</td>
               <td>
                 <b>{fmtPct(r.decodeBandwidthUtilization)}</b>
                 <div className="muted small">
@@ -544,14 +561,11 @@ function PhaseCard({
         </table>
         </div>
         <div className="muted small">
-          注：「通信时间（总）」为原始通信量，进入延迟的是其暴露部分 = 总量 ×（1 −
-          重叠系数）。重叠系数 = 1（理想模式）时通信被计算完全隐藏，TTFT / TPOT
-          不含通信；可在「校准参数」面板调低 TP / EP / PP 通信重叠查看暴露的通信代价。
+          {t('note.comm_overlap')}
           {disaggOn && (
             <>
               <br />
-              稳态负载分配：Prefill batch = {Bp}，Decode batch = {Bd}
-              （按输入比例拆分总并发 {Bp + Bd}）。
+              {t('note.steady_state_split', { Bp, Bd, total: Bp + Bd })}
             </>
           )}
         </div>
@@ -574,32 +588,33 @@ function Warnings(props: ResultsProps) {
 }
 
 function SpeculativeCard({ speculative }: { speculative: NonNullable<EvaluationResult['speculative']> }) {
+  const { t } = useI18n();
   return (
     <div className="card">
-      <h3 className="card-title">投机采样明细</h3>
+      <h3 className="card-title">{t('title.speculative')}</h3>
       <div className="card-body">
         <div className="phase-grid">
           <table className="detail-table">
             <thead>
               <tr>
-                <th colSpan={2}>草稿模型</th>
+                <th colSpan={2}>{t('label.draft_model_info')}</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td>模型</td>
+                <td>{t('label.model_name')}</td>
                 <td>{speculative.draftModelName}</td>
               </tr>
               <tr>
-                <td>γ（草稿步数）</td>
+                <td>{t('label.gamma')}</td>
                 <td>{speculative.gamma}</td>
               </tr>
               <tr>
-                <td>接受率</td>
+                <td>{t('label.acceptance_rate')}</td>
                 <td>{fmtPct(speculative.acceptanceRate)}</td>
               </tr>
               <tr>
-                <td>每周期期望 token</td>
+                <td>{t('label.expected_tokens')}</td>
                 <td>{speculative.expectedTokensPerCycle.toFixed(2)}</td>
               </tr>
             </tbody>
@@ -607,34 +622,34 @@ function SpeculativeCard({ speculative }: { speculative: NonNullable<EvaluationR
           <table className="detail-table">
             <thead>
               <tr>
-                <th colSpan={2}>时序分析</th>
+                <th colSpan={2}>{t('label.timing_analysis')}</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td>草稿步时间</td>
+                <td>{t('label.draft_step_time')}</td>
                 <td>{fmtMs(speculative.draftStepMs)}</td>
               </tr>
               <tr>
-                <td>验证步时间</td>
+                <td>{t('label.verify_step_time')}</td>
                 <td>{fmtMs(speculative.verifyStepMs)}</td>
               </tr>
               <tr>
-                <td>周期时间</td>
+                <td>{t('label.cycle_time')}</td>
                 <td>{fmtMs(speculative.cycleTimeMs)}</td>
               </tr>
               <tr>
-                <td>TPOT（投机）</td>
+                <td>{t('label.tpot_speculative')}</td>
                 <td>
                   <b>{fmtMs(speculative.verifyStepMs / speculative.expectedTokensPerCycle + speculative.draftStepMs * speculative.gamma / speculative.expectedTokensPerCycle)}</b>
                 </td>
               </tr>
               <tr>
-                <td>TPOT（基线）</td>
+                <td>{t('label.tpot_baseline')}</td>
                 <td>{fmtMs(speculative.baselineTpotMs)}</td>
               </tr>
               <tr>
-                <td>加速比</td>
+                <td>{t('label.speedup')}</td>
                 <td>
                   <b>{speculative.speedup.toFixed(2)}×</b>
                 </td>
@@ -643,8 +658,7 @@ function SpeculativeCard({ speculative }: { speculative: NonNullable<EvaluationR
           </table>
         </div>
         <div className="muted small">
-          投机采样通过小模型（Draft）生成候选 token，大模型（Main）并行验证，从而降低每 token
-          生成时间（TPOT）。Draft 和 Main 模型同时在 GPU 内存中；Draft 仅支持 TP 并行。
+          {t('note.speculative')}
         </div>
       </div>
     </div>

@@ -38,6 +38,7 @@ import {
 } from './components/Fields';
 import { Results } from './components/Results';
 import { fmtCtx } from './lib/format';
+import { LocaleProvider, useI18n } from './lib/i18n';
 import {
   CALIBRATED_PRESET,
   DEFAULT_BATCH_SIZE,
@@ -103,6 +104,16 @@ interface ComputedCore {
 }
 
 export default function App() {
+  return (
+    <LocaleProvider>
+      <AppContent />
+    </LocaleProvider>
+  );
+}
+
+function AppContent() {
+  const { locale, setLocale, t } = useI18n();
+
   // --- hardware ---
   const [modelId, setModelId] = useState('llama3_1_8b');
   const [gpuId, setGpuId] = useState('h100_sxm');
@@ -147,15 +158,19 @@ export default function App() {
         .sort((a, b) => a.paramsB - b.paramsB)
         .map((m) => {
           const tier = MODEL_SIZE_TIER.get(m.id);
+          const activePart = m.moe
+            ? ` · ${t('model.sub.moe', { activeB: m.moe.activeParamsB })}`
+            : '';
           return {
             id: m.id,
             name: m.name,
             tag: m.type === 'moe' ? 'MoE' : 'Dense',
-            sub: `${m.paramsB}B${m.moe ? ` · 激活 ${m.moe.activeParamsB}B` : ''} · ctx ${fmtCtx(m.maxCtx)}`,
+            sub: `${m.paramsB}B${activePart} · ctx ${fmtCtx(m.maxCtx)}`,
             ...(tier ? { category: tier } : {}),
           };
         }),
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [locale],
   );
 
   // Only show size tiers that have at least one model in the catalog.
@@ -192,9 +207,14 @@ export default function App() {
         id: m.id,
         name: m.name,
         tag: m.type === 'moe' ? 'MoE' : 'Dense',
-        sub: `${m.paramsB}B（主模型 ${main.paramsB}B 的 ${Math.round((m.paramsB / main.paramsB) * 100)}%）`,
+        sub: t('model.sub.draft', {
+          draftB: m.paramsB,
+          mainB: main.paramsB,
+          pct: Math.round((m.paramsB / main.paramsB) * 100),
+        }),
       }));
-  }, [modelId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, locale]);
 
   // Max draft TP: total GPUs or decode pool GPUs (if PD disaggregation)
   const maxDraftTp = disaggOn ? intOr(decodeGpus, 1, 1) : intOr(numGpus, 1, 1);
@@ -267,7 +287,7 @@ export default function App() {
     const warnings: string[] = [];
     if (workload.inputLen > model.maxCtx) {
       warnings.push(
-        `输入长度 ${workload.inputLen} 超过模型最大上下文 ${model.maxCtx}（${fmtCtx(model.maxCtx)}）`,
+        t('warn.input_exceeds_ctx', { inputLen: workload.inputLen, maxCtx: model.maxCtx, ctxStr: fmtCtx(model.maxCtx) }),
       );
     }
 
@@ -314,9 +334,9 @@ export default function App() {
           : decodeSolved.chosen ?? decodeSolved.bestEffort ?? FALLBACK_LAYOUT,
         kvTransferOverlap: fracOr(kvOverlap, DEFAULT_KV_TRANSFER_OVERLAP),
       };
-      if (nGpus < MIN_GPUS_FOR_PD_DISAGG) warnings.push('PD 分离至少需要 2 张 GPU');
+      if (nGpus < MIN_GPUS_FOR_PD_DISAGG) warnings.push(t('warn.pd_min_gpus'));
       if (pN + dN > nGpus) {
-        warnings.push(`Prefill（${pN}）+ Decode（${dN}）GPU 数之和 ${pN + dN} 超过总数 ${nGpus}`);
+        warnings.push(t('warn.pd_exceeds_total', { pN, dN, total: nGpus }));
       }
     }
 
@@ -405,6 +425,8 @@ export default function App() {
     draftTp,
     gamma,
     acceptanceRate,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    locale,
   ]);
 
   const model = ALL_MODELS[modelId];
@@ -489,11 +511,24 @@ export default function App() {
     setCal((c) => ({ ...c, [k]: v }));
   }
 
+  const decodePct = Number.isFinite(prefillRatio)
+    ? (100 - prefillRatio * 100).toFixed(0)
+    : '—';
+
   return (
     <div className="app">
       <header className="app-header">
-        <h1>LLM 推理计算器</h1>
-        <span className="app-sub">静态性能模型 · 理想值上界</span>
+        <h1>{t('header.title')}</h1>
+        <span className="app-sub">{t('header.subtitle')}</span>
+        <select
+          className="locale-select"
+          value={locale}
+          onChange={(e) => setLocale(e.target.value as 'en' | 'zh')}
+          aria-label="Language"
+        >
+          <option value="en">EN</option>
+          <option value="zh">中文</option>
+        </select>
         <a
           className="gh-link"
           href="https://github.com/nichenqin/llm-inference-calculator"
@@ -521,9 +556,9 @@ export default function App() {
 
       <div className="columns">
         <aside className="col-left">
-          <Section title="模型与 GPU">
+          <Section title={t('section.model_gpu')}>
             <div className="field">
-              <span className="field-label">模型</span>
+              <span className="field-label">{t('label.model')}</span>
               <SearchSelect
                 options={modelOptions}
                 value={modelId}
@@ -533,7 +568,7 @@ export default function App() {
               />
             </div>
             <div className="field">
-              <span className="field-label">GPU</span>
+              <span className="field-label">{t('label.gpu')}</span>
               <SearchSelect
                 options={gpuOptions}
                 value={gpuId}
@@ -542,27 +577,27 @@ export default function App() {
               />
             </div>
             <div className="field-grid">
-              <NumberField label="GPU 数目" value={numGpus} onChange={setNumGpus} min={1} />
+              <NumberField label={t('label.gpu_count')} value={numGpus} onChange={setNumGpus} min={1} />
               {intOr(numGpus, 1, 1) >= MIN_GPUS_FOR_PER_NODE && (
                 <NumberField
-                  label="每节点 GPU 数"
+                  label={t('label.gpus_per_node')}
                   value={gpusPerNode}
                   onChange={setGpusPerNode}
                   min={1}
                   max={intOr(numGpus, 1, 1)}
-                  hint="总GPU数超过 8 时默认 8"
+                  hint={t('hint.gpus_per_node')}
                 />
               )}
             </div>
           </Section>
 
-          <Section title="互连">
+          <Section title={t('section.interconnect')}>
             <SelectField
-              label="节点内互连（intra-node）"
+              label={t('label.intra_node')}
               value={intraId}
               onChange={setIntraId}
               options={[
-                { value: 'auto', label: '自动（按 GPU 规格：NVLink 或 PCIe 回退）' },
+                { value: 'auto', label: t('option.intra_auto') },
                 ...INTRA_NODES_CONNECTION.map((c) => ({
                   value: c.id,
                   label: `${c.label} — ${c.bw} GB/s`,
@@ -571,41 +606,41 @@ export default function App() {
             />
             {intOr(numGpus, 1, 1) >= MIN_GPUS_FOR_INTER_NODE && (
               <SelectField
-                label="节点间互连（inter-node）"
+                label={t('label.inter_node')}
                 value={interId}
                 onChange={setInterId}
                 options={INTER_NODES_CONNECTION.map((c) => ({
                   value: c.id,
                   label: `${c.label} — ${c.bw} GB/s`,
                 }))}
-                hint="仅多节点（跨节点 PP / PD KV 传输）时生效"
+                hint={t('hint.inter_node')}
               />
             )}
           </Section>
 
-          <Section title="量化与负载">
+          <Section title={t('section.quant_workload')}>
             <ChipGroup
-              label="量化（权重与 KV cache 统一）"
+              label={t('label.quantization')}
               value={quant}
               onChange={setQuant}
               options={QUANT_OPTIONS}
             />
             <div className="field-grid">
               <NumberField
-                label="输入长度"
+                label={t('label.input_length')}
                 value={inputLen}
                 onChange={setInputLen}
                 min={1}
                 error={
                   model && intOr(inputLen, DEFAULT_INPUT_LEN, 1) > model.maxCtx
-                    ? `超过模型最大上下文 ${model.maxCtx}`
+                    ? `${t('error.exceeds_context')} ${model.maxCtx}`
                     : undefined
                 }
               />
-              <NumberField label="输出长度" value={outputLen} onChange={setOutputLen} min={1} />
+              <NumberField label={t('label.output_length')} value={outputLen} onChange={setOutputLen} min={1} />
             </div>
             <NumberField
-              label="稳态总并发请求数"
+              label={t('label.batch_size')}
               value={batchSize}
               onChange={setBatchSize}
               min={1}
@@ -613,14 +648,14 @@ export default function App() {
               hint=""
             />
             <Toggle
-              label="稳态 Prefill/Decode 竞争模型"
-              desc="启用后考虑 prefill 与 decode 在 GPU 上的排队延迟"
+              label={t('label.prefill_ratio_toggle')}
+              desc={t('desc.prefill_ratio_toggle')}
               checked={prefillRatioOn}
               onChange={setPrefillRatioOn}
             />
             {prefillRatioOn && (
               <NumberField
-                label="稳态 Prefill 比例"
+                label={t('label.prefill_ratio')}
                 value={prefillRatio}
                 onChange={setPrefillRatio}
                 onBlur={() =>
@@ -631,15 +666,15 @@ export default function App() {
                 min={0.1}
                 max={0.9}
                 step={0.05}
-                hint={`稳态下 prefill 请求占比，自动 clip 到 0.1–0.9（decode 为 ${Number.isFinite(prefillRatio) ? (100 - prefillRatio * 100).toFixed(0) : '—'}%）；reasoning 模型典型值 0.2`}
+                hint={t('hint.prefill_ratio', { decodePct })}
               />
             )}
           </Section>
 
-          <Section title="并行与开关">
+          <Section title={t('section.parallel_switches')}>
             <div className="field-grid">
               <NumberField
-                label="DP"
+                label={t('label.dp')}
                 value={dp}
                 onChange={(v) =>
                   setDp(largestDivisorAtMost(nGpusUi, Math.min(intOr(v, 1, 1), dpMax)))
@@ -648,7 +683,7 @@ export default function App() {
                 max={dpMax}
               />
               <NumberField
-                label="EP"
+                label={t('label.ep')}
                 value={ep}
                 onChange={(v) =>
                   setEp(largestDivisorAtMost(epReplica, Math.min(intOr(v, 1, 1), epMax)))
@@ -656,24 +691,23 @@ export default function App() {
                 min={1}
                 max={epMax}
                 disabled={!isMoe}
-                hint={!isMoe ? 'Dense 模型不支持 EP' : undefined}
+                hint={!isMoe ? t('hint.ep_disabled') : undefined}
               />
             </div>
             <div className="muted small" style={{ marginBottom: 8 }}>
-              TP / PP 由求解器自动决定（DP ⇒ TP ⇒ EP ⇒ PP，优先保证显存装下）；
-              DP、EP 及两者乘积均不超过 GPU 总数，且须整除总数（非法值自动吸附到最近的合法约数）
+              {t('note.parallelism')}
             </div>
             <div className="toggle-stack">
               <Toggle
-                label="FlashAttention"
-                desc="开启后激活显存按 O(N·h) 计，避免 N² 注意力矩阵"
+                label={t('label.flash_attention')}
+                desc={t('desc.flash_attention')}
                 checked={flashAttention}
                 onChange={setFlashAttention}
               />
               {intOr(numGpus, 1, 1) >= MIN_GPUS_FOR_PD_DISAGG && (
                 <Toggle
-                  label="PD 分离（Prefill-Decode Disaggregation）"
-                  desc="Prefill 与 Decode 使用独立 GPU 池"
+                  label={t('label.pd_disagg')}
+                  desc={t('desc.pd_disagg')}
                   checked={disaggOn}
                   onChange={(v) => {
                     setDisaggOn(v);
@@ -691,7 +725,7 @@ export default function App() {
               <div className="pd-extra">
                 <div className="field-grid">
                   <NumberField
-                    label="Prefill GPU 数"
+                    label={t('label.prefill_gpus')}
                     value={prefillGpus}
                     onChange={(v) => {
                       setPrefillGpus(Math.min(intOr(v, 1, 1), prefillMax))
@@ -701,7 +735,7 @@ export default function App() {
                     max={prefillMax}
                   />
                   <NumberField
-                    label="Decode GPU 数"
+                    label={t('label.decode_gpus')}
                     value={decodeGpus}
                     onChange={(v) => {
                       setDecodeGpus(Math.min(intOr(v, 1, 1), decodeMax))
@@ -713,28 +747,28 @@ export default function App() {
                 </div>
                 <div className="field-grid">
                   <NumberField
-                    label="Prefill DP"
+                    label={t('label.prefill_dp')}
                     value={prefillDp}
                     onChange={(v) => setPrefillDp(Math.min(intOr(v, 1, 1), intOr(prefillGpus, 1, 1)))}
                     min={1}
                     max={intOr(prefillGpus, 1, 1)}
-                    hint="Prefill 池的数据并行度"
+                    hint={t('hint.prefill_dp')}
                   />
                   <NumberField
-                    label="Decode DP"
+                    label={t('label.decode_dp')}
                     value={decodeDp}
                     onChange={(v) => setDecodeDp(Math.min(intOr(v, 1, 1), intOr(decodeGpus, 1, 1)))}
                     min={1}
                     max={intOr(decodeGpus, 1, 1)}
-                    hint="Decode 池的数据并行度（高 DP 可最大化 TP）"
+                    hint={t('hint.decode_dp')}
                   />
                 </div>
                 <div className="muted small">
-                  两池之和须 ≤ GPU 总数（{nGpusUi}），允许部分 GPU 不分配。DP 须整除对应池的 GPU 数。
+                  {t('note.pd_constraint', { total: nGpusUi })}
                 </div>
                 <div className="field">
                   <span className="field-label">
-                    KV 传输重叠系数 — {(fracOr(kvOverlap, DEFAULT_KV_TRANSFER_OVERLAP)).toFixed(2)}
+                    {t('label.kv_overlap', { value: fracOr(kvOverlap, DEFAULT_KV_TRANSFER_OVERLAP).toFixed(2) })}
                   </span>
                   <input
                     type="range"
@@ -745,18 +779,17 @@ export default function App() {
                     onChange={(e) => setKvOverlap(e.target.valueAsNumber)}
                   />
                   <span className="field-hint">
-                    KV 传输时间与 prefill 计算重叠（被隐藏）的比例：0 = 完全串行暴露在
-                    TTFT 中，1 = 完全隐藏；有逐层流水的现代引擎约 0.8 ~ 1
+                    {t('hint.kv_overlap')}
                   </span>
                 </div>
               </div>
             )}
           </Section>
 
-          <Section title="投机采样 (Speculative Decoding)">
+          <Section title={t('section.speculative')}>
             <Toggle
-              label="启用投机采样"
-              desc="小模型草稿 + 大模型验证，降低 TPOT"
+              label={t('label.sd_toggle')}
+              desc={t('desc.sd_toggle')}
               checked={sdOn}
               onChange={(v) => {
                 setSdOn(v);
@@ -778,122 +811,123 @@ export default function App() {
             {sdOn && (
               <div className="sd-extra">
                 <div className="field">
-                  <span className="field-label">草稿模型（Draft Model）</span>
+                  <span className="field-label">{t('label.draft_model')}</span>
                   <SearchSelect
                     options={draftModelOptions}
                     value={draftModelId}
                     onChange={setDraftModelId}
-                    placeholder={draftModelOptions.length > 0 ? '选择草稿模型' : '无可用草稿模型'}
+                    placeholder={draftModelOptions.length > 0 ? t('placeholder.select_draft') : t('placeholder.no_draft')}
                   />
                   {draftModelOptions.length === 0 && (
                     <span className="field-hint err-hint">
-                      模型库中没有适合当前主模型的草稿模型（需要 {Math.round(ALL_MODELS[modelId]?.paramsB ?? 0 * SD_RATIO_MIN)}B
-                      ~ {Math.round(ALL_MODELS[modelId]?.paramsB ?? 0 * SD_RATIO_MAX)}B 的 dense 模型）
+                      {t('error.no_draft_model', {
+                        minB: Math.round((ALL_MODELS[modelId]?.paramsB ?? 0) * SD_RATIO_MIN),
+                        maxB: Math.round((ALL_MODELS[modelId]?.paramsB ?? 0) * SD_RATIO_MAX),
+                      })}
                     </span>
                   )}
                 </div>
                 <NumberField
-                  label="Draft TP"
+                  label={t('label.draft_tp')}
                   value={draftTp}
                   onChange={(v) => setDraftTp(Math.min(intOr(v, 1, 1), maxDraftTp))}
                   min={1}
                   max={maxDraftTp}
-                  hint="草稿模型的张量并行度（仅支持 TP，默认跟随主模型 TP）"
+                  hint={t('hint.draft_tp')}
                 />
                 <div className="field-grid">
                   <NumberField
-                    label="γ（草稿步数）"
+                    label={t('label.gamma')}
                     value={gamma}
                     onChange={setGamma}
                     min={1}
                     max={16}
-                    hint="每次验证前草稿模型生成的 token 数，典型 4–8"
+                    hint={t('hint.gamma')}
                   />
                   <NumberField
-                    label="接受率"
+                    label={t('label.acceptance_rate')}
                     value={acceptanceRate}
                     onChange={setAcceptanceRate}
                     min={0}
                     max={1}
                     step={0.05}
-                    hint="草稿 token 被主模型接受的概率；取决于模型配对，通常 0.5–0.9"
+                    hint={t('hint.acceptance_rate')}
                   />
                 </div>
                 <div className="muted small">
-                  Draft 和 Main 模型同时在 GPU 内存中；Draft 仅支持 TP 并行，不支持 PP/EP/DP。
-                  Draft TP 默认跟随主模型 TP，最大值 = {disaggOn ? 'Decode' : ''} GPU 总数（{maxDraftTp}）。
+                  {t('note.sd_constraint', { maxDraftTp, disaggOn })}
                 </div>
               </div>
             )}
           </Section>
 
           <CollapseSection
-            title="校准参数（高级）"
-            summary={calOpen ? undefined : '默认：校准值（calibration/README.md 锚点）'}
+            title={t('section.calibration')}
+            summary={calOpen ? undefined : t('summary.calibration')}
             open={calOpen}
             onToggle={() => setCalOpen((v) => !v)}
           >
             <div className="field-grid">
               <NumberField
-                label="显存预留 headroom"
+                label={t('label.headroom')}
                 value={headroom}
                 onChange={setHeadroom}
                 min={0}
                 step={0.05}
               />
               <NumberField
-                label="算力利用率 MFU"
-                hint="Model FLOPs Utilization, Prefill 阶段实际达到的峰值算力比例"
+                label={t('label.mfu')}
+                hint={t('hint.mfu')}
                 value={cal.mfuPrefill}
                 onChange={(v) => setCalField('mfuPrefill', v)}
                 min={0}
                 step={0.05}
               />
               <NumberField
-                label="带宽利用率 BW_eff"
-                hint="Effective Bandwidth, Decode 阶段实际达到的 HBM 显存带宽比例"
+                label={t('label.bw_eff')}
+                hint={t('hint.bw_eff')}
                 value={cal.bwEffDecode}
                 onChange={(v) => setCalField('bwEffDecode', v)}
                 min={0}
                 step={0.05}
               />
               <NumberField
-                label="通信效率（节点内）"
+                label={t('label.comm_eff_intra')}
                 value={cal.commEffIntra}
                 onChange={(v) => setCalField('commEffIntra', v)}
                 min={0}
                 step={0.05}
               />
               <NumberField
-                label="通信效率（节点间）"
+                label={t('label.comm_eff_inter')}
                 value={cal.commEffInter}
                 onChange={(v) => setCalField('commEffInter', v)}
                 min={0}
                 step={0.05}
               />
               <NumberField
-                label="TP 通信重叠"
+                label={t('label.tp_comm_overlap')}
                 value={cal.tpCommOverlap}
                 onChange={(v) => setCalField('tpCommOverlap', v)}
                 min={0}
                 step={0.05}
               />
               <NumberField
-                label="EP 通信重叠"
+                label={t('label.ep_comm_overlap')}
                 value={cal.epCommOverlap}
                 onChange={(v) => setCalField('epCommOverlap', v)}
                 min={0}
                 step={0.05}
               />
               <NumberField
-                label="PP 通信重叠"
+                label={t('label.pp_comm_overlap')}
                 value={cal.ppCommOverlap}
                 onChange={(v) => setCalField('ppCommOverlap', v)}
                 min={0}
                 step={0.05}
               />
               <NumberField
-                label="α 节点内 (ms)"
+                label={t('label.alpha_intra')}
                 value={cal.alphaIntraMs}
                 onChange={(v) => setCalField('alphaIntraMs', v)}
                 min={0}
@@ -901,7 +935,7 @@ export default function App() {
                 placeholder={String(DEFAULT_ALPHA_INTRA_MS)}
               />
               <NumberField
-                label="α 节点间 (ms)"
+                label={t('label.alpha_inter')}
                 value={cal.alphaInterMs}
                 onChange={(v) => setCalField('alphaInterMs', v)}
                 min={0}
@@ -913,24 +947,24 @@ export default function App() {
               <button
                 type="button"
                 className="btn"
-                title="性能上界：全部效率 = 1，仅显存预留保持 0.1"
+                title={t('title.reset_ideal')}
                 onClick={() => {
                   setCal({ ...IDEAL });
                   setHeadroom(DEFAULT_HEADROOM);
                 }}
               >
-                重置为理想值
+                {t('btn.reset_ideal')}
               </button>
               <button
                 type="button"
                 className="btn"
-                title="按 calibration/README.md 锚点取最大值"
+                title={t('title.reset_calibrated')}
                 onClick={() => {
                   setCal({ ...CALIBRATED_PRESET });
                   setHeadroom(DEFAULT_HEADROOM);
                 }}
               >
-                重置为校准值
+                {t('btn.reset_calibrated')}
               </button>
             </div>
           </CollapseSection>
@@ -958,7 +992,7 @@ export default function App() {
               warnings={core.warnings}
             />
           ) : (
-            <div className="card">无效配置</div>
+            <div className="card">{t('label.invalid_config')}</div>
           )}
         </main>
       </div>

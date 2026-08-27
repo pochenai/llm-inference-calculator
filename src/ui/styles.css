@@ -61,9 +61,8 @@ body {
   font-size: 12.5px;
 }
 
-/* GitHub link pushed to the right edge of the header */
+/* GitHub link in the right-aligned header group */
 .gh-link {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -87,6 +86,29 @@ body {
 
 .gh-text {
   line-height: 1;
+}
+
+/* Locale selector — pushed to the right, gh-link follows */
+.locale-select {
+  margin-left: auto;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.locale-select:hover {
+  border-color: var(--accent);
+}
+
+.locale-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 /* ---------- two-column layout ---------- */

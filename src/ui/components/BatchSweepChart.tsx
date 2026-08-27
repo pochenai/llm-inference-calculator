@@ -16,6 +16,7 @@ import { evaluate } from '../../core/metrics';
 import type { Calibration } from '../../core/calibration';
 import type { SystemSpec } from '../../core/types';
 import { fmtMs, fmtTps } from '../lib/format';
+import { useI18n } from '../lib/i18n';
 
 // Build x-axis batch values: powers of 2 up to the largest power of 2 <= maxBatch,
 // then append maxBatch itself as the final point (skip if it's already a power of 2).
@@ -41,6 +42,8 @@ interface SweepPoint {
 }
 
 export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibration }) {
+  const { t } = useI18n();
+
   const points = useMemo<SweepPoint[]>(() => {
     const batches = buildBatchSweep(spec.workload.batchSize);
     return batches.map((b) => {
@@ -53,9 +56,9 @@ export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibrat
   if (points.every((p) => p.tps === null)) {
     return (
       <div className="card">
-        <h3 className="card-title">Throughput & Latency vs Batch Size</h3>
+        <h3 className="card-title">{t('title.batch_sweep')}</h3>
         <div className="card-body">
-          <div className="muted small">当前配置下没有可行的 batch。</div>
+          <div className="muted small">{t('note.no_feasible_batch')}</div>
         </div>
       </div>
     );
@@ -65,7 +68,7 @@ export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibrat
 
   return (
     <div className="card">
-      <h3 className="card-title">Throughput & Latency vs Batch Size</h3>
+      <h3 className="card-title">{t('title.batch_sweep')}</h3>
       <div className="card-body">
         <div className="sweep-chart">
           <ResponsiveContainer width="100%" height={290}>
@@ -77,7 +80,7 @@ export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibrat
                 tickLine={false}
                 axisLine={{ stroke: '#c9ced6' }}
                 label={{
-                  value: 'Batch Size',
+                  value: t('label.batch_size_axis'),
                   position: 'insideBottom',
                   offset: -16,
                   fill: '#68707d',
@@ -91,7 +94,7 @@ export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibrat
                 tick={{ fontSize: 11, fill: '#68707d' }}
                 tickLine={{ stroke: '#c9ced6' }}
                 axisLine={{ stroke: '#c9ced6' }}
-                label={{ value: 'Throughput', position: 'top', offset: 8, fill: '#68707d', fontSize: 11 }}
+                label={{ value: t('label.throughput_axis'), position: 'top', offset: 8, fill: '#68707d', fontSize: 11 }}
               />
               {/* Right Y-axis label: absolute-positioned text to avoid recharts'
                   confusing "offset pushes toward centre" semantics. */}
@@ -103,14 +106,14 @@ export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibrat
                 tick={{ fontSize: 11, fill: '#68707d' }}
                 tickLine={{ stroke: '#c9ced6' }}
                 axisLine={{ stroke: '#c9ced6' }}
-                label={{ value: 'Latency', position: 'top', offset: 8, fill: '#68707d', fontSize: 11 }}
+                label={{ value: t('label.latency_axis'), position: 'top', offset: 8, fill: '#68707d', fontSize: 11 }}
               />
               <Tooltip content={<SweepTooltip />} cursor={{ fill: 'rgba(59, 91, 219, 0.06)' }} />
               <Legend position="top" wrapperStyle={{ fontSize: 12 }} />
               <Bar
                 yAxisId="tps"
                 dataKey="tps"
-                name="吞吐 (tok/s)"
+                name={t('label.throughput_tps')}
                 fill="rgba(59, 91, 219, 0.75)"
                 radius={[3, 3, 0, 0]}
                 maxBarSize={34}
@@ -118,7 +121,7 @@ export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibrat
               <Line
                 yAxisId="lat"
                 dataKey="e2eMs"
-                name="端到端延迟"
+                name={t('label.e2e_latency')}
                 stroke="#b197fc"
                 strokeWidth={1.8}
                 dot={{ r: 2.5, fill: '#b197fc', strokeWidth: 0 }}
@@ -129,7 +132,7 @@ export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibrat
         </div>
         {infeasible.length > 0 && (
           <div className="muted small">
-            batch = {infeasible.join(', ')} 显存不足（超过最大 Batch size），未在图中显示。
+            {t('note.oom_batch', { batches: infeasible.join(', ') })}
           </div>
         )}
       </div>
@@ -149,17 +152,19 @@ interface SweepTooltipProps {
 }
 
 function SweepTooltip({ active, payload, label }: SweepTooltipProps) {
+  const { t } = useI18n();
+
   if (!active || !payload || payload.length === 0) return null;
   const tps = payload.find((p) => p.dataKey === 'tps')?.value;
   const lat = payload.find((p) => p.dataKey === 'e2eMs')?.value;
   if (typeof tps !== 'number' && typeof lat !== 'number') {
-    return <div className="sweep-tip">batch = {label}：显存不足</div>;
+    return <div className="sweep-tip">batch = {label}：{t('label.oom_tooltip').split(': ')[1] || 'VRAM overflow'}</div>;
   }
   return (
     <div className="sweep-tip">
       <div className="sweep-tip-head">batch = {label}</div>
-      {typeof tps === 'number' && <div>吞吐：{fmtTps(tps)} tok/s</div>}
-      {typeof lat === 'number' && <div>端到端延迟：{fmtMs(lat)}</div>}
+      {typeof tps === 'number' && <div>{t('label.throughput_tooltip', { tps: fmtTps(tps) })}</div>}
+      {typeof lat === 'number' && <div>{t('label.e2e_tooltip', { ms: fmtMs(lat) })}</div>}
     </div>
   );
 }

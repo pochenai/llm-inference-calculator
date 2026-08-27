@@ -2,6 +2,7 @@
 // Spaces in the query act as wildcards: "qwen 4b" matches "Qwen3.5 4B".
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../lib/i18n';
 
 export interface SearchOption {
   id: string;
@@ -33,6 +34,7 @@ const MAX_RENDER = 400;
 // Compact clipboard button with brief ✅ feedback after a successful copy.
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const { t } = useI18n();
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(text).then(
       () => {
@@ -49,8 +51,8 @@ function CopyButton({ text }: { text: string }) {
       type="button"
       className={`copy-btn${copied ? ' copied' : ''}`}
       onClick={handleCopy}
-      title="复制"
-      aria-label="复制"
+      title={t('label.copy')}
+      aria-label={t('label.copy')}
     >
       {copied ? '✅' : '📋'}
     </button>
@@ -58,6 +60,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 export function SearchSelect({ options, value, onChange, placeholder, categories, copyText }: Props) {
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [activeCat, setActiveCat] = useState<string | null>(null);
@@ -100,7 +103,7 @@ export function SearchSelect({ options, value, onChange, placeholder, categories
             className={`size-chip${activeCat === null ? ' active' : ''}`}
             onClick={() => setActiveCat(null)}
           >
-            All
+            {t('label.all')}
           </button>
           {categories.map((c) => (
             <button
@@ -118,7 +121,7 @@ export function SearchSelect({ options, value, onChange, placeholder, categories
         <input
           className="input"
           value={open ? query : current?.name ?? ''}
-          placeholder={placeholder ?? '搜索…'}
+          placeholder={placeholder ?? t('placeholder.search')}
           onFocus={() => {
             setOpen(true);
             setQuery('');
@@ -150,9 +153,9 @@ export function SearchSelect({ options, value, onChange, placeholder, categories
             </button>
           ))}
           {filtered.length > MAX_RENDER && (
-            <div className="search-empty">… 其余 {filtered.length - MAX_RENDER} 项，请输入关键词过滤</div>
+            <div className="search-empty">{t('note.more_items', { count: filtered.length - MAX_RENDER })}</div>
           )}
-          {filtered.length === 0 && <div className="search-empty">无匹配项</div>}
+          {filtered.length === 0 && <div className="search-empty">{t('note.no_match')}</div>}
         </div>
       )}
     </div>
