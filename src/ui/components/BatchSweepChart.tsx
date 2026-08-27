@@ -17,7 +17,22 @@ import type { Calibration } from '../../core/calibration';
 import type { SystemSpec } from '../../core/types';
 import { fmtMs, fmtTps } from '../lib/format';
 
-const SWEEP_BATCHES = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+// Build x-axis batch values: powers of 2 up to the largest power of 2 <= maxBatch,
+// then append maxBatch itself as the final point (skip if it's already a power of 2).
+// Examples: maxBatch=78 -> [1,2,4,8,16,32,64,78]; maxBatch=128 -> [1,2,4,8,16,32,64,128].
+function buildBatchSweep(maxBatch: number): number[] {
+  const safeMax = Math.max(1, Math.floor(maxBatch));
+  const powers: number[] = [];
+  for (let p = 1; p <= safeMax; p *= 2) {
+    powers.push(p);
+  }
+  // Append maxBatch only when it isn't already the last power of 2 in the list.
+  const last = powers[powers.length - 1];
+  if (last !== safeMax) {
+    powers.push(safeMax);
+  }
+  return powers;
+}
 
 interface SweepPoint {
   batch: number;
@@ -27,13 +42,7 @@ interface SweepPoint {
 
 export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibration }) {
   const points = useMemo<SweepPoint[]>(() => {
-    // Always include the currently selected batch so it shows on the chart.
-    const batches = [...SWEEP_BATCHES];
-    const current = spec.workload.batchSize;
-    if (!batches.includes(current)) {
-      batches.push(current);
-      batches.sort((a, b) => a - b);
-    }
+    const batches = buildBatchSweep(spec.workload.batchSize);
     return batches.map((b) => {
       const r = evaluate({ ...spec, workload: { ...spec.workload, batchSize: b } }, cal);
       if (!r.ok || !r.value.feasible) return { batch: b, tps: null, e2eMs: null };
