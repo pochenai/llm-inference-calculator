@@ -196,6 +196,48 @@ input[type='range'] {
   position: relative;
 }
 
+/* Inline row: input + trailing copy button inside SearchSelect. */
+.search-select-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.search-select-row > .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.copy-btn {
+  flex: 0 0 auto;
+  width: 34px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+
+.copy-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.copy-btn:active {
+  transform: scale(0.94);
+}
+
+.copy-btn.copied {
+  background: var(--ok-soft);
+  border-color: var(--ok);
+}
+
 /* Size filter chips (shown above the model search input) */
 .size-chip-row {
   display: flex;

@@ -10,27 +10,7 @@ Collected 2026-08-23. Purpose: compare against the calculator's ideal values to 
 
 ---
 
-## 1. Single GPU (TP=1, batch=1, llama.cpp) [LAT]
-
-Source: [XiongjieDai/GPU-Benchmarks-on-LLM-Inference](https://github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference).
-Models: Llama 3 8B / 70B; `pp` = prefill tok/s, `tg` = decode tok/s; ctx = context length.
-
-| GPU | Model | Quant | ctx | pp (tok/s) | tg (tok/s) |
-|---|---|---|---|---|---|
-| A100 PCIe 80G | 8B | Q4_K_M | 512 | 5981 | 140.6 |
-| A100 PCIe 80G | 8B | F16 | 512 | 7741 | 54.8 |
-| A100 PCIe 80G | 70B | Q4_K_M | 512 | 744 | 22.3 |
-| A100 SXM 80G | 8B | Q4_K_M | 512 | 5948 | 135.0 |
-| A100 SXM 80G | 70B | Q4_K_M | 512 | 818 | 24.6 |
-| H100 PCIe 80G | 8B | Q4_K_M | 512 | 8125 | 145.6 |
-| H100 PCIe 80G | 8B | F16 | 512 | 10816 | 68.0 |
-| H100 PCIe 80G | 8B | F16 | 4096 | 8107 | 66.0 |
-| H100 PCIe 80G | 70B | Q4_K_M | 512 | 1013 | 25.0 |
-| H100 PCIe 80G | 70B | Q4_K_M | 4096 | 863 | 23.8 |
-
-Note: the repo's **multi-GPU rows** (×2/×4/×8) show abnormally low efficiency (early llama.cpp multi-GPU issues) and are not used for calibration.
-
-## 2. NVIDIA TRT-LLM official overview [THR]
+## 1. NVIDIA TRT-LLM official overview [THR]
 
 Source: [TensorRT-LLM Performance Overview](https://nvidia.github.io/TensorRT-LLM/performance/perf-overview.html).
 Metric: Total Output Throughput (tok/s), continuous batching with batch swept to saturation.
@@ -74,7 +54,27 @@ Header **ISL/OSL = Input / Output Sequence Length**, i.e. input/output token cou
 | 1024/2048 | 11584 | 16859 |
 | 2048/128 | 3832 | 4364 |
 
-## 3. NVIDIA official blog: GPT-J 6B, H100 vs A100 [LAT + THR]
+### Llama 3.3 70B FP4, 1×B200 / 1×GB200 (TP=1)
+
+| ISL/OSL | B200 (1 GPU) | GB200 (1 GPU) |
+|---|---|---|
+| 128/128 | 10614 | 11101 |
+| 128/2048 | 9446 | 10276 |
+| 1024/2048 | 6547 | 7923 |
+| 2048/128 | 1330 | 1418 |
+| 2048/2048 | 4528 | 5327 |
+
+### Llama 3.1 405B FP4, 4×B200 / 4×GB200 (TP=4)
+
+| ISL/OSL | B200 (4 GPUs) | GB200 (4 GPUs) |
+|---|---|---|
+| 128/128 | 6219 | 6599 |
+| 128/2048 | 7178 | 7497 |
+| 1024/2048 | 4833 | 4686 |
+| 2048/128 | 738 | 762 |
+| 2048/2048 | 4024 | 4327 |
+
+## 2. NVIDIA official blog: GPT-J 6B, H100 vs A100 [LAT + THR]
 
 Source: [H100 has 4.6x A100 performance in TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/blogs/H100vsA100.html).
 TRT-LLM v0.5.0; H100 FP8 / A100 FP16, SXM 80G, TP=1.
@@ -84,7 +84,7 @@ TRT-LLM v0.5.0; H100 FP8 / A100 FP16, SXM 80G, TP=1.
 | batch=1, ISL=128 decode | 185 tok/s (7.1 ms/token) | 111 tok/s (12.5 ms/token) |
 | batch=64, ISL/OSL=128/128 | 10907 tok/s, TTFT 102 ms | 3679 tok/s, TTFT 481 ms |
 
-## 4. Splitwise (Microsoft, NSDI'24): Llama-2-70B, TP=8, batch=1 [LAT + PD disaggregation]
+## 3. Splitwise (Microsoft, NSDI'24): Llama-2-70B, TP=8, batch=1 [LAT + PD disaggregation]
 
 Source: [arXiv 2311.18677](https://arxiv.org/html/2311.18677v2).
 DGX node, 8 GPUs, TP=8, InfiniBand (A100 pair 200 Gbps / H100 pair 400 Gbps), single request P50.
@@ -102,7 +102,7 @@ PD-disaggregation findings:
 - Decode-side batch saturates memory at 64
 - Example optimal splits: coding 35 prefill + 5 decode machines; chat 25 + 15
 
-## 5. DeepSeek [CFG + some THR]
+## 4. DeepSeek [CFG + some THR]
 
 - **DeepSeek-V2** ([arXiv 2405.04434](https://arxiv.org/html/2405.04434v1)): 236B MoE / 21B active, **single node 8×H800 decode throughput > 50,000 tok/s** (large batch) [THR]
 - **DeepSeek-V3** ([arXiv 2412.19437](https://arxiv.org/html/2412.19437v1)) §3.4 [CFG]:
@@ -111,7 +111,7 @@ PD-disaggregation findings:
   - Batch per expert partition ≤ 256 tokens
   - No throughput/latency numbers published
 
-## 6. MLPerf Inference v5.0 (NVIDIA submission) [THR]
+## 5. MLPerf Inference v5.0 (NVIDIA submission) [THR]
 
 Source: [NVIDIA MLPerf v5.0 blog](https://developer.nvidia.com/blog/nvidia-blackwell-delivers-massive-performance-leaps-in-mlperf-inference-v5-0/).
 Llama 2 70B, offline (batch saturated):
@@ -122,7 +122,7 @@ Llama 2 70B, offline (batch saturated):
 | 8×B200 | 98,858 |
 | GB200 NVL72 | 869,203 |
 
-## 7. Third-party serving (saturated steady state) [THR]
+## 6. Third-party serving (saturated steady state) [THR]
 
 - [dlewis.io: Llama 3.3 70B, 4×H100, NIM/TRT-LLM, bf16](https://dlewis.io/evaluating-llama-33-70b-inference-h100-a100/):
   200→200 peak ~7,000 TPS; 250 concurrent 1000→200 ~2,600 TPS; under load TTFT <5s (queueing-dominated).
@@ -130,7 +130,19 @@ Llama 2 70B, offline (batch saturated):
   batch=1, in=256 TTFT: vLLM 123ms / TRT-LLM 194ms / SGLang 340ms; SGLang batch=64 460 tok/s.
   ⚠️ The source claims a single H100 runs 70B FP8 (~70GB weights, on the edge); hardware description is questionable — use with caution.
 
-## 8. LMSYS Chunked Pipeline Prefill (SGLang): H20 multi-node, batch=1, 128K long context [PP×TP, read from charts]
+- [Spheron: Best GPU for AI Inference 2026](https://www.spheron.network/blog/best-gpu-for-ai-inference-2026/):
+  Llama 70B, 8-GPU cluster, saturated steady state.
+
+  | GPU | Precision | tok/s (8× cluster) | $/hr | $/M tokens |
+  |---|---|---|---|---|
+  | H100 SXM | FP8 | ~24,528 | $1.03 | ~$0.095 |
+  | H200 SXM | FP8 | ~34,992 | $4.54 | ~$0.288 |
+  | B200 | FP8 | ~55,776 | $6.02 | ~$0.239 |
+  | B200 | FP4 | ~102,728 | $2.12 | — |
+
+  Note: source reports per-GPU tok/s; values above are cluster totals (× 8). Benchmark is prefill-dominated (prefillRatio = 1).
+
+## 7. LMSYS Chunked Pipeline Prefill (SGLang): H20 multi-node, batch=1, 128K long context [PP×TP, read from charts]
 
 Source: [lmsys.org blog 2026-01-15 chunked-pipeline](https://www.lmsys.org/blog/2026-01-15-chunked-pipeline/); original charts archived under [`source_charts/`](./source_charts/).
 Hardware: 6-node H20 cluster (8×96GB or 8×141GB per node); models: Qwen3-235B-A22B-FP8, DeepSeek-V3.1; batch=1, input 128K (also 256K/512K/1M).
@@ -161,8 +173,45 @@ PP8 TP4 DCK long-context extrapolation: 128K→10.5s, 256K→32.7s, 512K→114.3
 
 PP2 ≈ 0.86–0.91; PP4 ≈ 0.80–0.85 (Qwen DCK 0.83); PP8 ≈ 0.70–0.77 (Qwen DCK 0.77, Qwen 6K 0.70).
 
+## 8. Koyeb GPU benchmarks (vLLM, synthetic data, single GPU) [LAT]
+
+Source: [Koyeb GPU benchmarks](https://www.koyeb.com/docs/hardware/gpu-benchmarks).
+Methodology: vLLM benchmarking CLI, synthetic random data, single GPU, no precision info (assumed bf16/fp16).
+Models: Llama 3.1 8B Instruct and Qwen 2.5 7B Instruct, TP=1.
+Batches: 1, 8, 32. Token shapes: 512/512, 1024/1024, 4096/1024.
+
+### Llama 3.1 8B Instruct, 1×GPU (TP=1)
+
+| ISL/OSL | Batch | H200 SXM | H100 SXM | A100 SXM 80G |
+|---|---|---|---|---|
+| 512/512 | 1 | 169 | 99 | 86 |
+| 512/512 | 8 | 1,309 | 816 | 652 |
+| 512/512 | 32 | 4,621 | 3,008 | 2,083 |
+| 1024/1024 | 1 | 168 | 99 | 86 |
+| 1024/1024 | 8 | 1,289 | 722 | 632 |
+| 1024/1024 | 32 | 4,419 | 2,401 | 1,888 |
+| 4096/1024 | 1 | 164 | 99 | 83 |
+| 4096/1024 | 8 | 1,162 | 616 | 544 |
+| 4096/1024 | 32 | 3,209 | 1,591 | 1,202 |
+
+### Qwen 2.5 7B Instruct, 1×GPU (TP=1)
+
+| ISL/OSL | Batch | H200 SXM | H100 SXM | A100 SXM 80G |
+|---|---|---|---|---|
+| 512/512 | 1 | 182 | 105 | 93 |
+| 512/512 | 8 | 1,371 | 808 | 699 |
+| 512/512 | 32 | 4,523 | 2,937 | 2,486 |
+| 1024/1024 | 1 | 182 | 106 | 92 |
+| 1024/1024 | 8 | 1,368 | 800 | 682 |
+| 1024/1024 | 32 | 4,719 | 2,802 | 2,363 |
+| 4096/1024 | 1 | 180 | 104 | 90 |
+| 4096/1024 | 8 | 1,143 | 750 | 636 |
+| 4096/1024 | 32 | 1,253 | 2,156 | 1,913 |
+
+Note: Deepseek R1 data was skipped (identical to Llama 3.1 8B — likely a copy error in the source). RTX PRO 6000 GPU was skipped (not in the GPU catalog).
+
 ## Known data gaps
 
 - **No direct measurement of Qwen3 235B on 8×H100** (closest: LMSYS H20 32-GPU PP8TP4; throughput-architecture analogy: Llama 4 Maverick).
 - Cross-node EP throughput measurements exist only as DeepSeek configs, no numbers; Llama 4 Maverick 8×H100 is TP, not EP.
-- PP data now available (§8), but only prefill / long-context / batch=1; no decode-side PP measurements.
+- PP data now available (§7), but only prefill / long-context / batch=1; no decode-side PP measurements.

@@ -41,6 +41,7 @@ export function NumberField({
   label,
   value,
   onChange,
+  onBlur,
   min,
   max,
   step,
@@ -52,6 +53,7 @@ export function NumberField({
   label: string;
   value: number;
   onChange: (n: number) => void;
+  onBlur?: () => void;
   min?: number | undefined;
   max?: number | undefined;
   step?: number | undefined;
@@ -73,6 +75,7 @@ export function NumberField({
         disabled={disabled}
         onChange={(e) => onChange(e.target.valueAsNumber)}
         onFocus={selectAllOnFocus}
+        onBlur={onBlur}
       />
     </Field>
   );

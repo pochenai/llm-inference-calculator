@@ -80,7 +80,12 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
 
   // Steady-state workload ratio: split total batch into prefill and decode pools.
   // r = prefill fraction, (1-r) = decode fraction.
-  const r = Math.max(0.1, Math.min(0.9, spec.workload.prefillRatio ?? DEFAULT_PREFILL_RATIO));
+  // When prefillRatio is undefined, the steady-state contention model is
+  // disabled: no batch splitting, no queuing delay between phases.
+  const steadyState = spec.workload.prefillRatio !== undefined;
+  const r = steadyState
+    ? Math.max(0.1, Math.min(0.9, spec.workload.prefillRatio!))
+    : DEFAULT_PREFILL_RATIO;
   const oneMinusR = 1 - r;
 
   const layoutErrors: string[] = [];
@@ -116,8 +121,9 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
     layoutErrors.push(...validateLayout(decodeLayout, spec.model, decodeGpus, spec.gpusPerNode));
 
     // Split batch by workload ratio for steady-state PD modeling.
-    prefillBatchSize = Math.max(1, Math.round(r * spec.workload.batchSize));
-    decodeBatchSize = Math.max(1, Math.round(oneMinusR * spec.workload.batchSize));
+    // When steady-state is disabled, both pools use the full batch.
+    prefillBatchSize = steadyState ? Math.max(1, Math.round(r * spec.workload.batchSize)) : spec.workload.batchSize;
+    decodeBatchSize = steadyState ? Math.max(1, Math.round(oneMinusR * spec.workload.batchSize)) : spec.workload.batchSize;
     prefillWorkload = { ...spec.workload, batchSize: prefillBatchSize };
     decodeWorkload = { ...spec.workload, batchSize: decodeBatchSize };
 
@@ -271,6 +277,10 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
   if (spec.disagg) {
     // PD: pools are physically separate, no contention.
     ttftMs = prefill.ttftMs + kvTransferExposedMs;
+    effectiveTpotMs = tpotMs;
+  } else if (!steadyState) {
+    // Steady-state contention model disabled: pure phase times, no queuing.
+    ttftMs = prefill.ttftMs;
     effectiveTpotMs = tpotMs;
   } else {
     // Non-PD: compute GPU occupancy fractions from total work per cycle.

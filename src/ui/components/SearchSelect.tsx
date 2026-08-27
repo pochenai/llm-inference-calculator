@@ -1,7 +1,7 @@
 // Searchable single-select dropdown (used for model / GPU catalogs).
 // Spaces in the query act as wildcards: "qwen 4b" matches "Qwen3.5 4B".
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export interface SearchOption {
   id: string;
@@ -24,11 +24,40 @@ interface Props {
   // When provided, a row of filter chips is shown above the search input.
   // "All" is prepended automatically.
   categories?: SearchCategory[];
+  // When provided, a small copy button appears next to the input field.
+  copyText?: string;
 }
 
 const MAX_RENDER = 400;
 
-export function SearchSelect({ options, value, onChange, placeholder, categories }: Props) {
+// Compact clipboard button with brief ✅ feedback after a successful copy.
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      },
+      () => {
+        // ignore clipboard failures silently
+      },
+    );
+  }, [text]);
+  return (
+    <button
+      type="button"
+      className={`copy-btn${copied ? ' copied' : ''}`}
+      onClick={handleCopy}
+      title="复制"
+      aria-label="复制"
+    >
+      {copied ? '✅' : '📋'}
+    </button>
+  );
+}
+
+export function SearchSelect({ options, value, onChange, placeholder, categories, copyText }: Props) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [activeCat, setActiveCat] = useState<string | null>(null);
@@ -85,19 +114,22 @@ export function SearchSelect({ options, value, onChange, placeholder, categories
           ))}
         </div>
       )}
-      <input
-        className="input"
-        value={open ? query : current?.name ?? ''}
-        placeholder={placeholder ?? '搜索…'}
-        onFocus={() => {
-          setOpen(true);
-          setQuery('');
-        }}
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') setOpen(false);
-        }}
-      />
+      <div className="search-select-row">
+        <input
+          className="input"
+          value={open ? query : current?.name ?? ''}
+          placeholder={placeholder ?? '搜索…'}
+          onFocus={() => {
+            setOpen(true);
+            setQuery('');
+          }}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setOpen(false);
+          }}
+        />
+        {copyText !== undefined && <CopyButton text={copyText} />}
+      </div>
       {open && (
         <div className="search-list">
           {filtered.slice(0, MAX_RENDER).map((o) => (

@@ -116,6 +116,7 @@ export default function App() {
   const [outputLen, setOutputLen] = useState(DEFAULT_OUTPUT_LEN);
   const [batchSize, setBatchSize] = useState(DEFAULT_BATCH_SIZE);
   const [prefillRatio, setPrefillRatio] = useState(DEFAULT_PREFILL_RATIO);
+  const [prefillRatioOn, setPrefillRatioOn] = useState(false);
   // --- switches / parallelism ---
   const [flashAttention, setFlashAttention] = useState(true);
   const [disaggOn, setDisaggOn] = useState(false);
@@ -214,7 +215,9 @@ export default function App() {
       batchSize: intOr(batchSize, DEFAULT_BATCH_SIZE, 1),
       inputLen: intOr(inputLen, DEFAULT_INPUT_LEN, 1),
       outputLen: intOr(outputLen, DEFAULT_OUTPUT_LEN, 1),
-      prefillRatio: Math.max(0.1, Math.min(0.9, Number.isFinite(prefillRatio) ? prefillRatio : DEFAULT_PREFILL_RATIO)),
+      ...(prefillRatioOn
+        ? { prefillRatio: Math.max(0.1, Math.min(0.9, Number.isFinite(prefillRatio) ? prefillRatio : DEFAULT_PREFILL_RATIO)) }
+        : {}),
     };
     const head = fracOr(headroom, DEFAULT_HEADROOM);
     const calibration: Calibration = {
@@ -279,9 +282,14 @@ export default function App() {
       // Build pool-specific workloads with split batch sizes for the solver.
       // Without this, the solver evaluates layouts against the FULL batch size,
       // causing false "infeasible" verdicts for the (smaller) prefill pool.
-      const pRatio = workload.prefillRatio ?? DEFAULT_PREFILL_RATIO;
-      const pBatch = Math.max(1, Math.round(pRatio * workload.batchSize));
-      const dBatch = Math.max(1, Math.round((1 - pRatio) * workload.batchSize));
+      // When steady-state is disabled (prefillRatio undefined), both pools
+      // use the full batch.
+      const pBatch = workload.prefillRatio !== undefined
+        ? Math.max(1, Math.round(workload.prefillRatio * workload.batchSize))
+        : workload.batchSize;
+      const dBatch = workload.prefillRatio !== undefined
+        ? Math.max(1, Math.round((1 - workload.prefillRatio) * workload.batchSize))
+        : workload.batchSize;
       const prefillWorkload: Workload = { ...workload, batchSize: pBatch };
       const decodeWorkload: Workload = { ...workload, batchSize: dBatch };
       prefillSolved = solveParallelLayout({ ...solverBase, numGpus: pN, dp: pDp, workload: prefillWorkload, pdMode: 'prefill' as const });
@@ -493,11 +501,22 @@ export default function App() {
           <Section title="模型与 GPU">
             <div className="field">
               <span className="field-label">模型</span>
-              <SearchSelect options={modelOptions} value={modelId} onChange={setModelId} categories={modelSizeCategories} />
+              <SearchSelect
+                options={modelOptions}
+                value={modelId}
+                onChange={setModelId}
+                categories={modelSizeCategories}
+                copyText={ALL_MODELS[modelId]?.name ?? modelId}
+              />
             </div>
             <div className="field">
               <span className="field-label">GPU</span>
-              <SearchSelect options={gpuOptions} value={gpuId} onChange={setGpuId} />
+              <SearchSelect
+                options={gpuOptions}
+                value={gpuId}
+                onChange={setGpuId}
+                copyText={ALL_GPUS[gpuId]?.name ?? gpuId}
+              />
             </div>
             <div className="field-grid">
               <NumberField label="GPU 数目" value={numGpus} onChange={setNumGpus} min={1} />
@@ -570,15 +589,28 @@ export default function App() {
               placeholder={core?.bMaxPlaceholder}
               hint=""
             />
-            <NumberField
-              label="稳态 Prefill 比例"
-              value={prefillRatio}
-              onChange={(v) => setPrefillRatio(Math.max(0.1, Math.min(0.9, v || DEFAULT_PREFILL_RATIO)))}
-              min={0.1}
-              max={0.9}
-              step={0.05}
-              hint={`稳态下 prefill 请求占比（decode 自动为 ${(100 - prefillRatio * 100).toFixed(0)}%）；reasoning 模型典型值 0.2`}
+            <Toggle
+              label="稳态 Prefill/Decode 竞争模型"
+              desc="启用后考虑 prefill 与 decode 在 GPU 上的排队延迟"
+              checked={prefillRatioOn}
+              onChange={setPrefillRatioOn}
             />
+            {prefillRatioOn && (
+              <NumberField
+                label="稳态 Prefill 比例"
+                value={prefillRatio}
+                onChange={setPrefillRatio}
+                onBlur={() =>
+                  setPrefillRatio((v) =>
+                    Number.isFinite(v) ? Math.max(0.1, Math.min(0.9, v)) : DEFAULT_PREFILL_RATIO,
+                  )
+                }
+                min={0.1}
+                max={0.9}
+                step={0.05}
+                hint={`稳态下 prefill 请求占比，自动 clip 到 0.1–0.9（decode 为 ${Number.isFinite(prefillRatio) ? (100 - prefillRatio * 100).toFixed(0) : '—'}%）；reasoning 模型典型值 0.2`}
+              />
+            )}
           </Section>
 
           <Section title="并行与开关">
@@ -787,14 +819,16 @@ export default function App() {
                 step={0.05}
               />
               <NumberField
-                label="MFU_prefill"
+                label="算力利用率 MFU"
+                hint="Model FLOPs Utilization, Prefill 阶段实际达到的峰值算力比例"
                 value={cal.mfuPrefill}
                 onChange={(v) => setCalField('mfuPrefill', v)}
                 min={0}
                 step={0.05}
               />
               <NumberField
-                label="BW_eff_decode"
+                label="带宽利用率 BW_eff"
+                hint="Effective Bandwidth, Decode 阶段实际达到的 HBM 显存带宽比例"
                 value={cal.bwEffDecode}
                 onChange={(v) => setCalField('bwEffDecode', v)}
                 min={0}

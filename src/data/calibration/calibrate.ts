@@ -6,30 +6,13 @@
 // did not report render as "-". THR entries are compared against the decode
 // roofline ceiling BW_total / (kv_per_token * S_avg) as an upper bound.
 
-import { IDEAL, DEFAULT_ALPHA_INTRA_MS, DEFAULT_ALPHA_INTER_MS } from '../../core/calibration';
-import type { Calibration } from '../../core/calibration';
+import { IDEAL } from '../../core/calibration';
 import { evaluate } from '../../core/metrics';
 import { deriveConstants } from '../../core/model';
 import { MEASUREMENTS } from './measurements';
 import type { Measurement } from './measurements';
 import { model } from './models';
 import { gpu } from './gpus';
-
-// Small-context latency entries: batch=1 collectives cannot be overlapped, so
-// expose TP/EP comm and use the default per-call alpha.
-const CAL_LAT_SMALL: Calibration = {
-  ...IDEAL,
-  alphaIntraMs: DEFAULT_ALPHA_INTRA_MS,
-  alphaInterMs: DEFAULT_ALPHA_INTER_MS,
-  tpCommOverlap: 0,
-  epCommOverlap: 0,
-};
-
-// Long-context prefill-dominated entries follow the README comparison basis
-// (pure compute ideal; PP/TP comm treated as hidden).
-function calibrationFor(e: Measurement): Calibration {
-  return e.inputLen > 8192 ? IDEAL : CAL_LAT_SMALL;
-}
 
 function fmt(x: number | undefined, digits = 1): string {
   if (x === undefined || !Number.isFinite(x)) return '-';
@@ -50,35 +33,59 @@ interface IdealMetrics {
 
 function idealFor(e: Measurement): IdealMetrics {
   if (e.protocol === 'THR') {
-    // Decode roofline ceiling at the VRAM-limited max batch, so weight reads are
-    // amortized correctly (matters for large models where B cannot grow freely).
+    // Use evaluate() with IDEAL calibration so flash attention and prefill ratio
+    // are accounted for. If batch is explicitly set (>0), use it; otherwise compute
+    // VRAM-limited max batch.
     const g = gpu(e.gpuId);
-    const derived = deriveConstants(model(e.modelId), e.weightQuant, e.kvQuant);
-    const sAvg = e.inputLen + e.outputLen / 2;
-    const wPerGpu = derived.wBytesTotal / e.gpuCount;
-    const kvPerTokPerGpu = derived.kv.bytesPerToken / e.gpuCount;
-    const budget = Math.max(0, g.vramGb * 1e9 * 0.9 - wPerGpu);
-    const bMax = Math.max(1, Math.floor(budget / (kvPerTokPerGpu * sAvg)));
-    const bwAgg = g.bwGbps * 1e9 * e.gpuCount;
-    const ceiling = (bMax * bwAgg) / (derived.wBytesTotal + derived.kv.bytesPerToken * sAvg * bMax);
-    return { throughputTps: ceiling };
+    let batch: number;
+    if (e.batch > 0) {
+      batch = e.batch;
+    } else {
+      const derived = deriveConstants(model(e.modelId), e.weightQuant, e.kvQuant);
+      const sAvg = e.inputLen + e.outputLen / 2;
+      const wPerGpu = derived.wBytesTotal / e.gpuCount;
+      const kvPerTokPerGpu = derived.kv.bytesPerToken / e.gpuCount;
+      const budget = Math.max(0, g.vramGb * 1e9 * 0.9 - wPerGpu);
+      batch = Math.max(1, Math.floor(budget / (kvPerTokPerGpu * sAvg)));
+    }
+    const r = evaluate(
+      {
+        model: model(e.modelId),
+        gpu: g,
+        gpusPerNode: e.gpusPerNode,
+        interNodeBwGbps: 400,
+        workload: { batchSize: batch, inputLen: e.inputLen, outputLen: e.outputLen, ...(e.prefillRatio !== undefined ? { prefillRatio: e.prefillRatio } : {}) },
+        weightQuant: e.weightQuant,
+        kvQuant: e.kvQuant,
+        layout: e.layout,
+        flashAttention: true,
+        headroom: 0.1,
+      },
+      IDEAL,
+    );
+    if (!r.ok) return {};
+    // Pure prefill benchmarks: compare input tokens/s (not output tokens/s).
+    const thrTps =
+      (e.prefillRatio ?? 0.2) >= 1 && r.value.ttftMs > 0
+        ? (batch * e.inputLen) / (r.value.ttftMs / 1e3)
+        : r.value.throughputTps;
+    return { throughputTps: thrTps };
   }
 
-  const cal = calibrationFor(e);
   const r = evaluate(
     {
       model: model(e.modelId),
       gpu: gpu(e.gpuId),
       gpusPerNode: e.gpusPerNode,
       interNodeBwGbps: 400,
-      workload: { batchSize: e.batch, inputLen: e.inputLen, outputLen: e.outputLen },
+      workload: { batchSize: e.batch, inputLen: e.inputLen, outputLen: e.outputLen, ...(e.prefillRatio !== undefined ? { prefillRatio: e.prefillRatio } : {}) },
       weightQuant: e.weightQuant,
       kvQuant: e.kvQuant,
       layout: e.layout,
       flashAttention: true,
       headroom: 0.1,
     },
-    cal,
+    IDEAL,
   );
   if (!r.ok) return {};
 
@@ -117,6 +124,6 @@ export function renderCalibration(): string {
 
   lines.push('');
   lines.push('m = measured, i = ideal, r = measured/ideal ratio. "-" = not reported / not applicable.');
-  lines.push('LAT ratios ~2-5x mark the calibration region (MFU/alpha); THR ratio <1 = fraction of the decode roofline ceiling.');
+  lines.push('LAT ratios ~2-5x mark the calibration region (MFU/alpha); THR uses evaluate() with IDEAL, ratio ≈ 1 = ideal steady-state.');
   return lines.join('\n');
 }

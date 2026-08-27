@@ -2,6 +2,7 @@
 import type { ModelSpec } from '../../core/types';
 
 export const MODELS_24B: Record<string, ModelSpec> = {
+  gptj_6b: { "id": "gptj_6b", "name": "GPT-J 6B", "type": "dense", "paramsB": 6.05, "layers": 28, "hiddenSize": 4096, "kvHeads": 16, "headDim": 256, "maxCtx": 2048, "hf": "https://huggingface.co/EleutherAI/gpt-j-6b" },
   gemma4_e4b: { "id": "gemma4_e4b", "name": "Gemma 4 E4B (8B)", "type": "dense", "paramsB": 8, "layers": 42, "hiddenSize": 2560, "kvHeads": 2, "headDim": 256, "maxCtx": 131072, "localLayers": 35, "slidingWindow": 512, "globalHeadDim": 512, "hf": "https://huggingface.co/google/gemma-4-e4b-it" },
   nemotron_cascade_14b: { "id": "nemotron_cascade_14b", "name": "Nemotron-Cascade 14B Thinking", "type": "dense", "paramsB": 14, "layers": 40, "hiddenSize": 3584, "kvHeads": 8, "headDim": 128, "maxCtx": 65536, "hf": "https://huggingface.co/nvidia/Nemotron-Cascade-14B-Thinking" },
   nemotron_cascade_8b: { "id": "nemotron_cascade_8b", "name": "Nemotron-Cascade 8B", "type": "dense", "paramsB": 8, "layers": 32, "hiddenSize": 3072, "kvHeads": 8, "headDim": 128, "maxCtx": 65536, "hf": "https://huggingface.co/nvidia/Nemotron-Cascade-8B" },

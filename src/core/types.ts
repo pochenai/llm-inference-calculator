@@ -95,7 +95,9 @@ export interface Workload {
   inputLen: number;
   outputLen: number;
   // Steady-state workload composition: fraction of requests in prefill.
-  // Decode fraction is (1 - prefillRatio). Absent defaults to 0.5 (equal split).
+  // Decode fraction is (1 - prefillRatio). When undefined, the steady-state
+  // contention model is disabled entirely (no batch splitting, no queuing
+  // delay between prefill and decode phases).
   // Typical reasoning model: ~0.2 (prefill 20%, decode 80%).
   prefillRatio?: number;
 }
