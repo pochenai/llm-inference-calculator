@@ -15,6 +15,8 @@ import {
 import { evaluate } from '../../core/metrics';
 import type { Calibration } from '../../core/calibration';
 import type { SystemSpec } from '../../core/types';
+import { deriveConstants } from '../../core/model';
+import { vramBreakdown } from '../../core/memory';
 import { fmtMs, fmtTps } from '../lib/format';
 import { useI18n } from '../lib/i18n';
 
@@ -45,7 +47,40 @@ export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibrat
   const { t } = useI18n();
 
   const points = useMemo<SweepPoint[]>(() => {
-    const batches = buildBatchSweep(spec.workload.batchSize);
+    // Compute VRAM-limited max batch (same logic as VramCard "System max").
+    // Non-PD: bMax * dp. PD: min(bMax_prefill / r, bMax_decode / (1-r)).
+    // When prefillRatio is undefined, use bMaxFullLen (full sequence length limit).
+    let maxBatch: number;
+    if (spec.disagg) {
+      const pRatio = spec.workload.prefillRatio ?? 0.2;
+      const dRatio = 1 - pRatio;
+      const pDp = spec.disagg.prefillLayout.dp;
+      const dDp = spec.disagg.decodeLayout.dp;
+      const derived = deriveConstants(spec.model, spec.weightQuant, spec.kvQuant);
+      const memOpts = { flashAttention: spec.flashAttention, headroom: spec.headroom };
+      const pMem = vramBreakdown(spec.model, derived, spec.gpu, spec.disagg.prefillLayout, spec.workload, { ...memOpts, pdMode: 'prefill' as const });
+      const dMem = vramBreakdown(spec.model, derived, spec.gpu, spec.disagg.decodeLayout, spec.workload, { ...memOpts, pdMode: 'decode' as const });
+      if (spec.workload.prefillRatio !== undefined) {
+        const pBMax = pMem.bMax * pDp;
+        const dBMax = dMem.bMax * dDp;
+        maxBatch = Math.min(Math.floor(pBMax / pRatio), Math.floor(dBMax / dRatio));
+      } else {
+        const pBMax = pMem.bMaxFullLen * pDp;
+        const dBMax = dMem.bMaxFullLen * dDp;
+        maxBatch = Math.min(pBMax, dBMax);
+      }
+    } else {
+      const derived = deriveConstants(spec.model, spec.weightQuant, spec.kvQuant);
+      const mem = vramBreakdown(spec.model, derived, spec.gpu, spec.layout, spec.workload, {
+        flashAttention: spec.flashAttention,
+        headroom: spec.headroom,
+      });
+      const dp = spec.layout.dp;
+      maxBatch = spec.workload.prefillRatio !== undefined
+        ? mem.bMax * dp
+        : mem.bMaxFullLen * dp;
+    }
+    const batches = buildBatchSweep(Math.max(1, maxBatch));
     return batches.map((b) => {
       const r = evaluate({ ...spec, workload: { ...spec.workload, batchSize: b } }, cal);
       if (!r.ok || !r.value.feasible) return { batch: b, tps: null, e2eMs: null };
