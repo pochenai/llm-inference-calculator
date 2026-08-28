@@ -27,6 +27,19 @@ const EQUIV_GROUPS: QuantPrecision[][] = [
   ['int4', 'fp4'],
 ];
 
+// Whether a GPU has a usable peak-FLOPs entry for the given precision
+// (directly or via an equivalence-group fallback).
+export function gpuSupportsQuant(gpu: GpuSpec, quant: QuantPrecision): boolean {
+  if (gpu.peakTflops[quant] != null) return true;
+  const group = EQUIV_GROUPS.find((g) => g.includes(quant));
+  if (group) {
+    for (const alt of group) {
+      if (gpu.peakTflops[alt] != null) return true;
+    }
+  }
+  return false;
+}
+
 // Dense peak FLOPs for the requested precision, in FLOPs/s.
 // Throws when the datasheet has no usable column, to avoid silent mis-modeling.
 export function peakFlopsOf(gpu: GpuSpec, quant: QuantPrecision): number {

@@ -9,7 +9,7 @@ import { evaluate } from '../core/metrics';
 import { solveParallelLayout } from '../core/solver';
 import type { SolverResult } from '../core/solver';
 import { validateLayout } from '../core/layout';
-import { PCIE_BW_GBPS } from '../core/hardware';
+import { PCIE_BW_GBPS, gpuSupportsQuant } from '../core/hardware';
 import {
   IDEAL,
   DEFAULT_ALPHA_INTRA_MS,
@@ -210,6 +210,18 @@ function AppContent() {
     [],
   );
 
+  // Quantization options filtered to what the current GPU actually supports.
+  // A GPU "supports" a precision when it has a peak-TFLOPs entry for it
+  // (directly or via an equivalence-group fallback, e.g. fp16 ↔ bf16).
+  const quantOptions = useMemo(
+    () => {
+      const gpu = ALL_GPUS[gpuId];
+      if (!gpu) return QUANT_OPTIONS;
+      return QUANT_OPTIONS.filter((o) => gpuSupportsQuant(gpu, o.value));
+    },
+    [gpuId],
+  );
+
   // Draft model options: models in the SD size range (5-10x smaller than main)
   const draftModelOptions = useMemo<SearchOption[]>(() => {
     const main = ALL_MODELS[modelId];
@@ -239,6 +251,13 @@ function AppContent() {
     const model = ALL_MODELS[modelId];
     const gpu = ALL_GPUS[gpuId];
     if (!model || !gpu) return null;
+
+    // Fall back to a supported precision when the current quant is not
+    // available on this GPU (prevents a one-frame error flash on GPU switch).
+    const effectiveQuant: QuantPrecision = gpuSupportsQuant(gpu, quant)
+      ? quant
+      : (QUANT_OPTIONS.find((o) => o.value === 'bf16' && gpuSupportsQuant(gpu, o.value))
+          ?? QUANT_OPTIONS.find((o) => gpuSupportsQuant(gpu, o.value)))?.value ?? quant;
 
     const nGpus = intOr(numGpus, 1, 1);
     // The per-node split only matters beyond 3 GPUs; smaller clusters always
@@ -286,8 +305,8 @@ function AppContent() {
       intraNodeBwGbps: intraBw,
       interNodeBwGbps: interBw,
       workload,
-      weightQuant: quant,
-      kvQuant: quant,
+      weightQuant: effectiveQuant,
+      kvQuant: effectiveQuant,
       flashAttention,
       headroom: head,
       cal: calibration,
@@ -363,8 +382,8 @@ function AppContent() {
       interNodeBwGbps: interBw,
       ...(intraId !== 'auto' ? { intraNodeBwGbps: intraBw } : {}),
       workload,
-      weightQuant: quant,
-      kvQuant: quant,
+      weightQuant: effectiveQuant,
+      kvQuant: effectiveQuant,
       layout: effectiveLayout,
       flashAttention,
       headroom: head,
@@ -471,6 +490,16 @@ function AppContent() {
   useEffect(() => {
     if (ALL_MODELS[modelId]?.type !== 'moe') setEp(1);
   }, [modelId]);
+
+  // When the GPU changes, fall back to bf16 (or the first supported option)
+  // if the current quantization is not available on the new GPU.
+  useEffect(() => {
+    const gpu = ALL_GPUS[gpuId];
+    if (!gpu || gpuSupportsQuant(gpu, quant)) return;
+    const fallback = quantOptions.find((o) => o.value === 'bf16') ?? quantOptions[0];
+    if (fallback) setQuant(fallback.value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpuId]);
 
   // GPUs-per-node default, re-applied whenever the total changes:
   // 8 once the cluster reaches 8 GPUs, otherwise the cluster itself fits in
@@ -649,7 +678,7 @@ function AppContent() {
               label={t('label.quantization')}
               value={quant}
               onChange={setQuant}
-              options={QUANT_OPTIONS}
+              options={quantOptions}
             />
             <div className="field-grid">
               <NumberField
