@@ -406,6 +406,7 @@ function AppContent() {
     outputLen,
     batchSize,
     prefillRatio,
+    prefillRatioOn,
     flashAttention,
     disaggOn,
     prefillGpus,
