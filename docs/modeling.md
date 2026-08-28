@@ -13,7 +13,7 @@ The problem is that latency and throughput involve too many variables — batch 
 
 So we take a different approach: **use the simplest possible assumptions to compute the static ideal inference performance of LLMs — given a model and hardware configuration, quickly derive theoretical upper bounds for throughput and latency**. We also provide a web-based calculator so you can try it hands-on.
 
-> Readers who are not interested in the computation details can jump straight to the [web calculator](https://llm-inference-calculator-delta.vercel.app/) to get a feel for it.
+> Readers who are not interested in the computation details can jump straight to the [web calculator](https://llm-inference-calculator-delta.vercel.app/) to get a feel for it.  If you find it useful, please ⭐ the [github repo](https://github.com/pochenai/llm-inference-calculator)!
 
 
 ## Terminology

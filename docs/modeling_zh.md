@@ -13,7 +13,7 @@
 
 所以我们换一个思路：**用尽可能简化的假设，计算 LLM 的静态理想推理性能——给定模型和硬件配置，快速得到吞吐和延迟的理论上界**。同时配套了一个网页版计算器，可以直接上手体验。
 
-> 对计算原理不感兴趣的读者，可以直接跳到[网页版计算器](https://llm-inference-calculator-delta.vercel.app/)，先感受一下效果。
+> 对计算原理不感兴趣的读者，可以直接跳到[网页版计算器](https://llm-inference-calculator-delta.vercel.app/)，先感受一下效果。觉得有用请给 [github repo](https://github.com/pochenai/llm-inference-calculator) 一个 ⭐！
 
 
 ## Terminology
