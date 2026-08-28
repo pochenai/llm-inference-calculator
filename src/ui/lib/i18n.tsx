@@ -169,21 +169,21 @@ const translations = {
     zh: `${params.total} / ${params.cap}（${params.pct}）`
   }),
   'label.over_capacity': { en: ' — exceeds', zh: ' — 超出' },
-  'label.max_batch_full': (params: { poolBMax: string, poolBMaxSteady: string }) => ({
-    en: `Max Batch size: full-load ${params.poolBMax} / steady-state ${params.poolBMaxSteady}`,
-    zh: `最大 Batch size：满载 ${params.poolBMax} / 稳态 ${params.poolBMaxSteady}`
+  'label.max_batch_full': (params: { poolBMax: string }) => ({
+    en: `Max Batch size: ${params.poolBMax}`,
+    zh: `最大 Batch size：${params.poolBMax}`
   }),
-  'label.system_max_batch': (params: { systemBMax: string, systemBMaxSteady: string }) => ({
-    en: ` | System max: full-load ${params.systemBMax} / steady-state ${params.systemBMaxSteady}`,
-    zh: ` | 系统最大：满载 ${params.systemBMax} / 稳态 ${params.systemBMaxSteady}`
+  'label.system_max_batch': (params: { systemBMax: string }) => ({
+    en: ` | System max: ${params.systemBMax}`,
+    zh: ` | 系统最大：${params.systemBMax}`
   }),
   'note.vram_capacity': {
-    en: 'Capacity accounts for headroom. Full-load: all requests at max sequence length (inputLen + outputLen), most conservative hard limit; Steady-state: requests evenly distributed across generation (avg inputLen + outputLen/2), typical runtime upper bound.',
-    zh: '容量已扣除 headroom 预留。满载：所有请求都在最大序列长度（inputLen + outputLen），最保守的硬上限；稳态：请求均匀分布在生成过程中（平均 inputLen + outputLen/2），典型运行时的上限。'
+    en: 'Capacity accounts for headroom. Max batch assumes requests evenly distributed across generation (avg inputLen + outputLen/2).',
+    zh: '容量已扣除 headroom 预留。最大 Batch 假设请求均匀分布在生成过程中（平均 inputLen + outputLen/2）。'
   },
-  'label.system_total_max_batch': (params: { totalSystemBMax: string, totalSystemBMaxSteady: string }) => ({
-    en: `System total max Batch size: full-load ${params.totalSystemBMax} / steady-state ${params.totalSystemBMaxSteady} = Min(Prefill/r, Decode/(1−r))`,
-    zh: `系统总最大 Batch size：满载 ${params.totalSystemBMax} / 稳态 ${params.totalSystemBMaxSteady} = Min(Prefill/r, Decode/(1−r))`
+  'label.system_total_max_batch': (params: { totalSystemBMax: string }) => ({
+    en: `System total max Batch size: ${params.totalSystemBMax} = Min(Prefill/r, Decode/(1−r))`,
+    zh: `系统总最大 Batch size：${params.totalSystemBMax} = Min(Prefill/r, Decode/(1−r))`
   }),
   'label.prefill_pool_batch': (params: { batch: number }) => ({
     en: `Prefill Pool (current batch ${params.batch})`,

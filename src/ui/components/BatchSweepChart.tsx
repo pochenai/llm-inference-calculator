@@ -48,12 +48,10 @@ export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibrat
 
   const points = useMemo<SweepPoint[]>(() => {
     // Compute VRAM-limited max batch (same logic as VramCard "System max").
-    // Non-PD: bMax * dp. PD: min(bMax_prefill / r, bMax_decode / (1-r)).
-    // When prefillRatio is undefined, use bMaxFullLen (full sequence length limit).
+    // When prefillRatio is set: steady-state bMax with ratio formula.
+    // When prefillRatio is unset: bMaxFullLen (simple worst-case limit).
     let maxBatch: number;
     if (spec.disagg) {
-      const pRatio = spec.workload.prefillRatio ?? 0.2;
-      const dRatio = 1 - pRatio;
       const pDp = spec.disagg.prefillLayout.dp;
       const dDp = spec.disagg.decodeLayout.dp;
       const derived = deriveConstants(spec.model, spec.weightQuant, spec.kvQuant);
@@ -61,6 +59,8 @@ export function BatchSweepChart({ spec, cal }: { spec: SystemSpec; cal: Calibrat
       const pMem = vramBreakdown(spec.model, derived, spec.gpu, spec.disagg.prefillLayout, spec.workload, { ...memOpts, pdMode: 'prefill' as const });
       const dMem = vramBreakdown(spec.model, derived, spec.gpu, spec.disagg.decodeLayout, spec.workload, { ...memOpts, pdMode: 'decode' as const });
       if (spec.workload.prefillRatio !== undefined) {
+        const pRatio = spec.workload.prefillRatio;
+        const dRatio = 1 - pRatio;
         const pBMax = pMem.bMax * pDp;
         const dBMax = dMem.bMax * dDp;
         maxBatch = Math.min(Math.floor(pBMax / pRatio), Math.floor(dBMax / dRatio));

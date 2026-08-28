@@ -289,16 +289,17 @@ function VramBar({
   label,
   mem,
   dp,
+  steadyState,
   systemBMax,
-  systemBMaxSteady,
 }: {
   label?: string;
   mem: EvaluationResult['memory'];
   dp?: number;
+  // Whether to show steady-state bMax (true) or full-load bMaxFullLen (false).
+  steadyState: boolean;
   // When this bar represents one pool of a PD pair, show the system-level
   // bMax that THIS pool limits the system to (bMax_pool / pool_fraction).
   systemBMax?: number;
-  systemBMaxSteady?: number;
 }) {
   const { t } = useI18n();
   const cap = mem.capacityBytes;
@@ -316,8 +317,7 @@ function VramBar({
   const total = mem.totalBytes;
   const scale = total > cap ? cap / total : 1;
   const d = dp ?? 1;
-  const poolBMax = mem.bMaxFullLen * d;
-  const poolBMaxSteady = mem.bMax * d;
+  const poolBMax = steadyState ? mem.bMax * d : mem.bMaxFullLen * d;
   return (
     <div className="vram-block">
       {label ? <div className="vram-label">{label}</div> : null}
@@ -337,13 +337,10 @@ function VramBar({
           {mem.feasible ? '' : t('label.over_capacity')}
         </span>
         <span>
-          {t('label.max_batch_full', { poolBMax: fmtInt(poolBMax), poolBMaxSteady: fmtInt(poolBMaxSteady) })}
-          {systemBMax !== undefined && systemBMaxSteady !== undefined && (
+          {t('label.max_batch_full', { poolBMax: fmtInt(poolBMax) })}
+          {systemBMax !== undefined && (
             <>
-              {t('label.system_max_batch', {
-                systemBMax: fmtInt(systemBMax),
-                systemBMaxSteady: fmtInt(systemBMaxSteady),
-              })}
+              {t('label.system_max_batch', { systemBMax: fmtInt(systemBMax) })}
             </>
           )}
         </span>
@@ -364,30 +361,30 @@ function VramCard(props: ResultsProps & { r: EvaluationResult }) {
   const { r, disaggOn, spec } = props;
   const { t } = useI18n();
 
+  // Whether steady-state mode is active (prefillRatio is set).
+  const steadyState = spec.workload.prefillRatio !== undefined;
+
   // PD: compute system-level bMax from each pool's limit.
-  // systemBMax = min(bMax_prefill / r, bMax_decode / (1-r))
-  // Each pool line shows "if this pool is the bottleneck, system total = bMax_pool / fraction".
+  // Steady-state: min(bMax_prefill / r, bMax_decode / (1-r))
+  // Non-steady: min(bMaxFullLen_prefill, bMaxFullLen_decode)
   let pSystemBMax: number | undefined;
-  let pSystemBMaxSteady: number | undefined;
   let dSystemBMax: number | undefined;
-  let dSystemBMaxSteady: number | undefined;
   let totalSystemBMax: number | undefined;
-  let totalSystemBMaxSteady: number | undefined;
   if (disaggOn && spec.disagg) {
-    const pRatio = spec.workload.prefillRatio ?? 0.2;
-    const dRatio = 1 - pRatio;
     const pDp = spec.disagg.prefillLayout.dp;
     const dDp = spec.disagg.decodeLayout.dp;
-    const pBMax = r.memoryPrefillPool!.bMaxFullLen * pDp;
-    const pBMaxS = r.memoryPrefillPool!.bMax * pDp;
-    const dBMax = r.memory.bMaxFullLen * dDp;
-    const dBMaxS = r.memory.bMax * dDp;
-    pSystemBMax = Math.floor(pBMax / pRatio);
-    pSystemBMaxSteady = Math.floor(pBMaxS / pRatio);
-    dSystemBMax = Math.floor(dBMax / dRatio);
-    dSystemBMaxSteady = Math.floor(dBMaxS / dRatio);
+    if (steadyState) {
+      const pRatio = spec.workload.prefillRatio!;
+      const dRatio = 1 - pRatio;
+      const pBMax = r.memoryPrefillPool!.bMax * pDp;
+      const dBMax = r.memory.bMax * dDp;
+      pSystemBMax = Math.floor(pBMax / pRatio);
+      dSystemBMax = Math.floor(dBMax / dRatio);
+    } else {
+      pSystemBMax = r.memoryPrefillPool!.bMaxFullLen * pDp;
+      dSystemBMax = r.memory.bMaxFullLen * dDp;
+    }
     totalSystemBMax = Math.min(pSystemBMax, dSystemBMax);
-    totalSystemBMaxSteady = Math.min(pSystemBMaxSteady, dSystemBMaxSteady);
   }
   return (
     <div className="card">
@@ -399,27 +396,22 @@ function VramCard(props: ResultsProps & { r: EvaluationResult }) {
               label={t('label.prefill_pool_batch', { batch: r.prefillBatchSize })}
               mem={r.memoryPrefillPool}
               dp={spec.disagg.prefillLayout.dp}
-              {...(pSystemBMax !== undefined && pSystemBMaxSteady !== undefined
-                ? { systemBMax: pSystemBMax, systemBMaxSteady: pSystemBMaxSteady }
-                : {})}
+              steadyState={steadyState}
+              {...(pSystemBMax !== undefined ? { systemBMax: pSystemBMax } : {})}
             />
             <VramBar
               label={t('label.decode_pool_batch', { batch: r.decodeBatchSize })}
               mem={r.memory}
               dp={spec.disagg.decodeLayout.dp}
-              {...(dSystemBMax !== undefined && dSystemBMaxSteady !== undefined
-                ? { systemBMax: dSystemBMax, systemBMaxSteady: dSystemBMaxSteady }
-                : {})}
+              steadyState={steadyState}
+              {...(dSystemBMax !== undefined ? { systemBMax: dSystemBMax } : {})}
             />
             <div className="muted small">
-              <b>{t('label.system_total_max_batch', {
-                totalSystemBMax: fmtInt(totalSystemBMax!),
-                totalSystemBMaxSteady: fmtInt(totalSystemBMaxSteady!),
-              })}</b>
+              <b>{t('label.system_total_max_batch', { totalSystemBMax: fmtInt(totalSystemBMax!) })}</b>
             </div>
           </>
         ) : (
-          <VramBar mem={r.memory} dp={spec.layout.dp} />
+          <VramBar mem={r.memory} dp={spec.layout.dp} steadyState={steadyState} />
         )}
         <div className="muted small">
           {t('note.vram_capacity')}
