@@ -161,6 +161,22 @@ src/
 
 ---
 
+## Citation
+
+If you use this project in your research or work, please cite it as:
+
+```bibtex
+@misc{llm-inference-calculator,
+  author       = {Po Chen},
+  title        = {LLM Inference Calculator: A Static Performance Model for LLM Inference},
+  howpublished = {\url{https://github.com/pochenai/llm-inference-calculator}},
+  note         = {Accessed: 08/2026},
+  year         = {08/2026}
+}
+```
+
+---
+
 ## License
 
 MIT

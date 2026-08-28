@@ -1,6 +1,8 @@
 # LLM 推理性能建模：从零推导 TTFT / TPOT / 吞吐量，附网页版计算器
 
-## 1. Motivation
+> [English Version](./modeling.md)
+
+## Motivation
 
 本地部署 LLM，或者公司做 LLM 容量规划时，绕不开两个问题：
 
@@ -16,7 +18,7 @@
 
 ## Terminology
 
-后文涉及不少符号和缩略词，这里先集中定义，方便随时回查。也可直接跳到[下一节]()。
+后文涉及不少符号和缩略词，这里先集中定义，方便随时回查。也可直接跳到[下一节](#1-简化假设)。
 
 **工作负载与模型规格**
 
@@ -104,7 +106,7 @@
 |---|---|
 | `W_bytes` | 模型权重总字节数 `= P_total × b_w` |
 | `flops_per_token` | 每 token 的线性项 FLOPs `≈ 2 × P_active`（不含注意力二次项） |
-| `kv_per_token` | 每 token 的 KV cache 字节数（见第四节公式） |
+| `kv_per_token` | 每 token 的 KV cache 字节数（见第三节公式） |
 | `Peak_FLOPs` | 单卡峰值算力（FLOPS），取决于量化精度对应的数据类型列 |
 | `T_compute` | Prefill 纯计算时间 `= FLOPs_prefill / (N_gpu × Peak_FLOPs × MFU)` |
 | `T_comm` | Prefill / Decode 通信时间（TP all-reduce + EP all-to-all + PP P2P 之和） |
@@ -117,7 +119,7 @@
 | `W_read_per_step` | Decode 每步需读取的权重量（dense = `W_bytes`；MoE 取决于 expert coverage） |
 
 
-## 2. 简化假设
+## 1. 简化假设
 
 性能估算的目的只是一个粗略的上界参考，因此本项目尽可能简化实际系统中的各种复杂变量，只保留对延迟和吞吐影响最大的因素：
 
@@ -134,7 +136,7 @@
 7. **α（小消息集合通信延迟）的语义与取值**：α 是**单次集合调用**（per-call）的固定总延迟——一次 all-reduce 内部所有轮、所有 hop 已含在内，不是 per-hop；hop 相关的数据量由带宽项 `2(t-1)/t` 负责。理想值模式（IDEAL）取 α=0，输出纯带宽严格上界；实际校准值节点内 ≈ 0.01 ms / 跨节点 ≈ 0.03 ms，与实测 NCCL 小消息 all-reduce 总量 6–11 μs 同量级（不采用 per-hop × hop 数的高估口径）。α 只在对应 `*CommOverlap < 1` 时生效（decode 小 batch 的集合通信无法重叠）。不从 batch=1 推理延迟反推 α（混有小 GEMM kernel 延迟，会高估一个数量级）。
 
 
-## 3. 建模主脉络：PD两阶段 + 四条资源轴
+## 2. 建模主脉络：PD两阶段 + 四条资源轴
 
 虽然已经做了大量简化，LLM 推理涉及的变量仍然很多：不同的注意力架构、KV cache 的计算方式、DP/TP/PP/EP/PD 分离等各种并行策略的交叉影响、FlashAttention 的作用、输入输出长度和 prefill/decode 比例的工作负载建模……
 
@@ -185,7 +187,7 @@ W_bytes         = P_total * b_w
                      │       └ 每参数字节数（由量化精度决定）
                      └ 总参数量（MoE 含全部专家）
 
-kv_per_token    → 见第四节 KV cache 通用式
+kv_per_token    → 见第三节 KV cache 通用式
 
 flops_per_token ~= 2 * P_active
                    └┬┘  └───┬───┘
@@ -204,7 +206,7 @@ flops_per_token ~= 2 * P_active
 **关键设计原则**：所有场景开关（FlashAttention、量化、Prefill-Decode 分离即 PD 分离、各种并行策略）都不改变这个框架的结构，只改变四条轴上的某个数值。
 
 
-## 4. KV Cache 建模
+## 3. KV Cache 建模
 
 KV cache 是连接模型架构和性能计算的桥梁——它同时影响显存容量（能不能装下）和 decode 带宽（每步要读多少数据）。不同的注意力架构，KV cache 的计算方式差异巨大，所以值得单独拿出来建模。
 
@@ -253,7 +255,7 @@ KV_total(S) = Σ_l 2 * b_kv * kv_heads_l * head_dim_l * min(S, cap_l)
 一个值得注意的观察：不同模型的 KV cache 增长行为差异巨大。标准 MHA 随序列长度线性增长，MLA 压缩到约 1/57，线性注意力和 SSM 层的贡献为零或常数，滑动窗口则在长序列下呈亚线性增长。这些差异直接决定了「给定显存能装多大的 batch」和「长上下文场景下 decode 会不会被 KV 读取拖慢」。
 
 
-## 5. VRAM 容量建模
+## 4. VRAM 容量建模
 
 有了 KV cache 的计算方式，显存占用的各个组成部分就都齐了。每卡显存占用：
 
@@ -262,7 +264,7 @@ KV_total     = kv_per_token * (N_in + N_out / 2) * B
                └─────┬────┘   └────────┬────────┘   └┬┘
                      │                 │             └ batch size
                      │                 └ 每请求稳态平均序列长度（输入 + 平均一半输出）
-                     └ 每 token 的 KV 字节数（见第四节）
+                     └ 每 token 的 KV 字节数（见第三节）
 
 # weight sharding: dense 和 MoE 不同
 dense:  W_per_gpu = W_bytes / (TP * PP)
@@ -282,7 +284,7 @@ VRAM_per_gpu = W_per_gpu + KV_total / (TP * PP) + Activation / (TP * PP) + overh
                    └ 每卡权重（见上）
 ```
 
-- 切分明细与 TP×EP 协作规则见第六节
+- 切分明细与 TP×EP 协作规则见第五节
 - **Activation（激活值）是 FlashAttention 开关唯一的落点**：
   - 开 FlashAttention：`O(B * N * h)`，随序列长度线性增长
   - 关 FlashAttention：注意力分数矩阵 `O(B * n_heads * N²)`，长序列出现内存悬崖，直接 Out Of Memory（OOM，显存溢出）
@@ -300,7 +302,7 @@ B_max = VRAM 约束关于 B 的上界（不可行时报告）
 ```
 
 
-## 6. 并行建模 = 切分算子 + 通信项
+## 5. 并行建模 = 切分算子 + 通信项
 
 Tensor Parallelism（TP，张量并行）、Pipeline Parallelism（PP，流水线并行）、Expert Parallelism（EP，专家并行）、Data Parallelism（DP，数据并行）——看起来很复杂，但它们其实是同一个模式的四种实例：**切分某类显存占用 + 添加一项通信代价**。
 
@@ -422,7 +424,7 @@ T_ar = n_ar * ( 2(t-1)/t * msg / BW + α )
 **2. 消息精度用激活精度 `b_act`**（通常 bf16），与权重量化精度 `b_w` 无关：权重 INT4 不会让 all-reduce 消息变小。
 
 
-## 7. 延迟建模
+## 6. 延迟建模
 
 有了前面的基础设施（派生常量、KV cache 模型、显存检查、并行通信模型），延迟计算就是把各个部分填进去。
 
@@ -432,7 +434,7 @@ T_ar = n_ar * ( 2(t-1)/t * msg / BW + α )
 FLOPs_prefill = B * N_in * flops_per_token + 4 * L * N_in^2 * (q_heads * head_dim) * B
                 └────────┬───────────────┘   └─────────────────┬─────────────────────┘
                          │                                     └ 注意力二次项（QK^T + AV）：唯一随序列长度平方
-                         │                                        增长的项（与 FlashAttention 无关，见第三节）
+                         │                                        增长的项（与 FlashAttention 无关，见第二节）
                          └ 矩阵乘项：总 token 数 × 每 token FLOPs
 
 T_compute = FLOPs_prefill / (N_gpu * Peak_FLOPs * MFU)
@@ -455,7 +457,7 @@ bytes_per_step = W_read_per_step / (t * p) + kv_per_token / (t * p) * S_history 
 
 T_step = bytes_per_step / BW_eff + T_tp_comm
          └───────┬──────┘ └─┬─┘    └───┬───┘
-                 │          │          └ TP 通信耗时（见第六节通用式）
+                 │          │          └ TP 通信耗时（见第五节通用式）
                  │          └ 单卡有效显存带宽（= gpu.bwGbps × bwEffDecode）
                  └ 每卡每步读取的总字节数
 
@@ -489,7 +491,7 @@ TPOT_sd = cycle_time / expected_tokens_per_cycle
 关键取舍：γ 越大，每周期产出的期望 token 数越多，但接受率随 γ 增大而下降（draft 偏离主模型的概率累积），且验证步的显存和计算开销不变。最优 γ 取决于 draft 模型与主模型的分布接近程度。两个模型同时驻留显存，VRAM 检查需额外计入 draft 模型权重。
 
 
-## 8. 指标汇总：吞吐和端到端延迟
+## 7. 指标汇总：吞吐和端到端延迟
 
 最后一步是把 prefill 和 decode 的时间串起来，得到系统级指标：
 
@@ -520,7 +522,7 @@ TPOT_eff = TPOT + ρ_prefill * TTFT / 2
 E2E_latency = TTFT_eff + N_out * TPOT_eff
 ```
 
-其中 `ρ_prefill` 和 `ρ_decode` 由 `prefillRatio`（`r`）和各阶段的吞吐率推算得出（见第二节假设 3）。
+其中 `ρ_prefill` 和 `ρ_decode` 由 `prefillRatio`（`r`）和各阶段的吞吐率推算得出（见第一节假设 3）。
 
 **吞吐（两种模式通用）**：
 
@@ -554,12 +556,12 @@ throughput = B * N_out / E2E_latency      # output tokens per second
 | PD 分离 | 通信轴 | TTFT 加 KV cache 传输项；prefill / decode 池使用各自独立的并行布局 |
 | MoE | 派生常量 | `W_bytes` 含全部专家，`flops_per_token` 用激活参数；EP 变为可选 |
 | Speculative Decoding | 带宽轴（decode） | TPOT 替换为 `(γ × draft_step + verify_step) / (γ × α + 1)`；VRAM 额外计入 draft 模型权重 |
-| PD 非 PD 共存模式 | 延迟轴 | TTFT / TPOT 叠加对方阶段的期望等待（见第二节假设 3） |
+| PD 非 PD 共存模式 | 延迟轴 | TTFT / TPOT 叠加对方阶段的期望等待（见第一节假设 3） |
 
 这意味着：增加一个新的场景开关（比如未来支持某种新的注意力变体），只需要确定它影响哪条轴、改变哪个数值，整个计算流程保持不变。
 
 
-## 9. 校准方法论
+## 8. 校准方法论
 
 上述建模计算采用的是理论峰值上界（算力打满、带宽打满、通信完美重叠）。纯峰值是严格上界，与实测通常有数倍差距，因此预留以下**物理层**效率常数供用户调节：
 
@@ -569,7 +571,7 @@ throughput = B * N_out / E2E_latency      # output tokens per second
 - `tpCommOverlap` / `epCommOverlap` / `ppCommOverlap`：各并行方式的计算-通信重叠系数（1 = 完全隐藏，0 = 完全暴露）
 - `alphaIntraMs` / `alphaInterMs`：小消息集合通信固定延迟（理想值模式取 0）
 
-校准只引入硬件 / 物理层面的修正，**未引入 vLLM / SGLang 等框架的引擎级校准因子**——它们的稳态吞吐来自 continuous batching 前提，与本模型的单 batch 假设不可比（见附录）。单节点用实测数据拟合这几个常数即可，参数空间小，校准是良态问题。多节点不追求精确，只额外引入一个关于通信量 / 跳数的校正因子，形式限于线性、最多二次模型（与第二节简化假设 4 对应）。
+校准只引入硬件 / 物理层面的修正，**未引入 vLLM / SGLang 等框架的引擎级校准因子**——它们的稳态吞吐来自 continuous batching 前提，与本模型的单 batch 假设不可比（见附录）。单节点用实测数据拟合这几个常数即可，参数空间小，校准是良态问题。多节点不追求精确，只额外引入一个关于通信量 / 跳数的校正因子，形式限于线性、最多二次模型（与第一节简化假设 4 对应）。
 
 ### 校准参数拟合
 
@@ -586,7 +588,7 @@ alphaIntraMs:          0.01      # ~10μs（NVLink 小消息 all-reduce 总延�
 alphaInterMs:          0.03      # ~30μs（InfiniBand 小消息 all-reduce 总延迟）
 ```
 
-## 10. 计算器演示
+## 9. 计算器演示
 
 理论讲完了，来实际上手。
 
@@ -600,7 +602,7 @@ alphaInterMs:          0.03      # ~30μs（InfiniBand 小消息 all-reduce 总�
 
 **问题 1：prefill 和 decode 同时存在时，GPU 吞吐怎么算？取最慢的？流水线？还是并发？**
 
-结论：取决于执行模式。PD 分离模式下两阶段严格串行于各自的 GPU 池，`E2E = TTFT + N_out × TPOT`。非 PD（Colocated）模式下两阶段共享 GPU，用概率竞争模型估算各自的期望等待（见第二节假设 3），公式形式不变但 TTFT 和 TPOT 已包含争用开销。真正的「混跑并发」需要 continuous batching 系统（如 SGLang / vLLM 的运行时调度），不在本项目范围内。
+结论：取决于执行模式。PD 分离模式下两阶段严格串行于各自的 GPU 池，`E2E = TTFT + N_out × TPOT`。非 PD（Colocated）模式下两阶段共享 GPU，用概率竞争模型估算各自的期望等待（见第一节假设 3），公式形式不变但 TTFT 和 TPOT 已包含争用开销。真正的「混跑并发」需要 continuous batching 系统（如 SGLang / vLLM 的运行时调度），不在本项目范围内。
 
 **问题 2：SGLang 的 benchmark 吞吐是直接算出来的吗？**
 
