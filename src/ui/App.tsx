@@ -58,6 +58,7 @@ import {
   DEFAULT_GAMMA,
   DEFAULT_ACCEPTANCE_RATE,
 } from './lib/constants';
+import { useUrlState, writeLocaleToUrl } from './lib/useUrlParams';
 
 const QUANT_OPTIONS: { value: QuantPrecision; label: string; sub: string }[] = [
   { value: 'fp32', label: 'FP32', sub: '4 Bytes' },
@@ -114,43 +115,58 @@ export default function App() {
 function AppContent() {
   const { locale, setLocale, t } = useI18n();
 
-  // --- hardware ---
-  const [modelId, setModelId] = useState('llama3_1_8b');
-  const [gpuId, setGpuId] = useState('h100_sxm');
-  const [numGpus, setNumGpus] = useState(1);
-  const [gpusPerNode, setGpusPerNode] = useState(DEFAULT_GPUS_PER_NODE);
-  const [intraId, setIntraId] = useState('auto');
-  const [interId, setInterId] = useState('ib_ndr');
-  // --- workload / quant ---
-  const [quant, setQuant] = useState<QuantPrecision>(DEFAULT_QUANT);
-  const [inputLen, setInputLen] = useState(DEFAULT_INPUT_LEN);
-  const [outputLen, setOutputLen] = useState(DEFAULT_OUTPUT_LEN);
-  const [batchSize, setBatchSize] = useState(DEFAULT_BATCH_SIZE);
-  const [prefillRatio, setPrefillRatio] = useState(DEFAULT_PREFILL_RATIO);
-  const [prefillRatioOn, setPrefillRatioOn] = useState(false);
-  // --- switches / parallelism ---
-  const [flashAttention, setFlashAttention] = useState(true);
-  const [disaggOn, setDisaggOn] = useState(false);
-  const [prefillGpus, setPrefillGpus] = useState(1);
-  const [decodeGpus, setDecodeGpus] = useState(1);
-  const [prefillDp, setPrefillDp] = useState(1);
-  const [decodeDp, setDecodeDp] = useState(1);
-  const [kvOverlap, setKvOverlap] = useState(DEFAULT_KV_TRANSFER_OVERLAP);
-  const [dp, setDp] = useState(1);
-  const [ep, setEp] = useState(1);
-  const [layoutOverride, setLayoutOverride] = useState<ParallelLayout | null>(null);
-  const [prefillLayoutOverride, setPrefillLayoutOverride] = useState<ParallelLayout | null>(null);
-  const [decodeLayoutOverride, setDecodeLayoutOverride] = useState<ParallelLayout | null>(null);
-  // --- speculative decoding ---
-  const [sdOn, setSdOn] = useState(false);
-  const [draftModelId, setDraftModelId] = useState('');
-  const [draftTp, setDraftTp] = useState(1);
-  const [gamma, setGamma] = useState(DEFAULT_GAMMA);
-  const [acceptanceRate, setAcceptanceRate] = useState(DEFAULT_ACCEPTANCE_RATE);
-  // --- calibration ---
+  // --- all persistent state from URL params ---
+  const [state, setState] = useUrlState();
+  const {
+    modelId, gpuId, numGpus, gpusPerNode, intraId, interId,
+    quant, inputLen, outputLen, batchSize, prefillRatio, prefillRatioOn,
+    flashAttention, disaggOn, prefillGpus, decodeGpus, prefillDp, decodeDp,
+    kvOverlap, dp, ep, layoutOverride, prefillLayoutOverride, decodeLayoutOverride,
+    sdOn, draftModelId, draftTp, gamma, acceptanceRate,
+    headroom, cal,
+  } = state;
+
+  // UI-only state (not persisted in URL)
   const [calOpen, setCalOpen] = useState(false);
-  const [headroom, setHeadroom] = useState(DEFAULT_HEADROOM);
-  const [cal, setCal] = useState<Calibration>({ ...CALIBRATED_PRESET });
+
+  // Convenience setters that patch individual fields.
+  const setModelId = (v: string) => setState((s) => ({ ...s, modelId: v }));
+  const setGpuId = (v: string) => setState((s) => ({ ...s, gpuId: v }));
+  const setNumGpus = (v: number) => setState((s) => ({ ...s, numGpus: v }));
+  const setGpusPerNode = (v: number) => setState((s) => ({ ...s, gpusPerNode: v }));
+  const setIntraId = (v: string) => setState((s) => ({ ...s, intraId: v }));
+  const setInterId = (v: string) => setState((s) => ({ ...s, interId: v }));
+  const setQuant = (v: QuantPrecision) => setState((s) => ({ ...s, quant: v }));
+  const setInputLen = (v: number) => setState((s) => ({ ...s, inputLen: v }));
+  const setOutputLen = (v: number) => setState((s) => ({ ...s, outputLen: v }));
+  const setBatchSize = (v: number) => setState((s) => ({ ...s, batchSize: v }));
+  const setPrefillRatio = (v: number | ((prev: number) => number)) =>
+    setState((s) => ({ ...s, prefillRatio: typeof v === 'function' ? v(s.prefillRatio) : v }));
+  const setPrefillRatioOn = (v: boolean) => setState((s) => ({ ...s, prefillRatioOn: v }));
+  const setFlashAttention = (v: boolean) => setState((s) => ({ ...s, flashAttention: v }));
+  const setDisaggOn = (v: boolean) => setState((s) => ({ ...s, disaggOn: v }));
+  const setPrefillGpus = (v: number) => setState((s) => ({ ...s, prefillGpus: v }));
+  const setDecodeGpus = (v: number) => setState((s) => ({ ...s, decodeGpus: v }));
+  const setPrefillDp = (v: number) => setState((s) => ({ ...s, prefillDp: v }));
+  const setDecodeDp = (v: number) => setState((s) => ({ ...s, decodeDp: v }));
+  const setKvOverlap = (v: number) => setState((s) => ({ ...s, kvOverlap: v }));
+  const setDp = (v: number) => setState((s) => ({ ...s, dp: v }));
+  const setEp = (v: number) => setState((s) => ({ ...s, ep: v }));
+  const setLayoutOverride = (v: ParallelLayout | null) => setState((s) => ({ ...s, layoutOverride: v }));
+  const setPrefillLayoutOverride = (v: ParallelLayout | null) => setState((s) => ({ ...s, prefillLayoutOverride: v }));
+  const setDecodeLayoutOverride = (v: ParallelLayout | null) => setState((s) => ({ ...s, decodeLayoutOverride: v }));
+  const setSdOn = (v: boolean) => setState((s) => ({ ...s, sdOn: v }));
+  const setDraftModelId = (v: string) => setState((s) => ({ ...s, draftModelId: v }));
+  const setDraftTp = (v: number) => setState((s) => ({ ...s, draftTp: v }));
+  const setGamma = (v: number) => setState((s) => ({ ...s, gamma: v }));
+  const setAcceptanceRate = (v: number) => setState((s) => ({ ...s, acceptanceRate: v }));
+  const setHeadroom = (v: number) => setState((s) => ({ ...s, headroom: v }));
+  const setCal = (v: Calibration | ((prev: Calibration) => Calibration)) =>
+    setState((s) => ({ ...s, cal: typeof v === 'function' ? v(s.cal) : v }));
+
+  // Stable calibration reference — only changes when calibration values actually
+  // change, preventing the heavy core memo from recalculating on unrelated state updates.
+  const calStable = useMemo(() => cal, [JSON.stringify(cal)]);
 
   const modelOptions = useMemo<SearchOption[]>(
     () =>
@@ -420,7 +436,7 @@ function AppContent() {
     prefillLayoutOverride,
     decodeLayoutOverride,
     headroom,
-    cal,
+    calStable,
     sdOn,
     draftModelId,
     draftTp,
@@ -445,6 +461,11 @@ function AppContent() {
   const dpMax = largestDivisorAtMost(nGpusUi, Math.floor(nGpusUi / intOr(ep, 1, 1)));
   const epReplica = Math.max(1, Math.floor(nGpusUi / intOr(dp, 1, 1)));
   const epMax = epReplica;
+
+  // Sync locale to URL when changed.
+  useEffect(() => {
+    writeLocaleToUrl(locale);
+  }, [locale]);
 
   // EP only applies to MoE models: keep it pinned to 1 for dense models.
   useEffect(() => {

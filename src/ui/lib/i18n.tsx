@@ -2,6 +2,7 @@
 // Locale type and translations dictionary
 
 import { createContext, useContext, useState, useEffect } from 'react';
+import { readLocaleFromUrl } from './useUrlParams';
 
 export type Locale = 'en' | 'zh';
 
@@ -304,6 +305,9 @@ const LocaleContext = createContext<{
 // Provider component
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(() => {
+    // URL takes precedence over localStorage for shareable links.
+    const fromUrl = readLocaleFromUrl();
+    if (fromUrl === 'zh' || fromUrl === 'en') return fromUrl;
     const stored = localStorage.getItem(STORAGE_KEY);
     return (stored === 'zh' ? 'zh' : 'en') as Locale;
   });
