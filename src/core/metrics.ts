@@ -159,11 +159,12 @@ function evaluateInner(spec: SystemSpec, cal: Calibration): EvaluationResult {
     prefillGpus = spec.layout.tp * spec.layout.ep * spec.layout.pp * spec.layout.dp;
     decodeGpus = prefillGpus;
     layoutErrors.push(...validateLayout(spec.layout, spec.model, prefillGpus, spec.gpusPerNode));
-    // Non-PD: same batch for both phases (time-multiplexed on same GPUs).
-    prefillBatchSize = spec.workload.batchSize;
-    decodeBatchSize = spec.workload.batchSize;
-    prefillWorkload = spec.workload;
-    decodeWorkload = spec.workload;
+    // Non-PD: split batch by workload ratio for steady-state modeling.
+    // When steady-state is disabled, both phases use the full batch.
+    prefillBatchSize = steadyState ? Math.max(1, Math.round(r * spec.workload.batchSize)) : spec.workload.batchSize;
+    decodeBatchSize = steadyState ? Math.max(1, Math.round(oneMinusR * spec.workload.batchSize)) : spec.workload.batchSize;
+    prefillWorkload = { ...spec.workload, batchSize: prefillBatchSize };
+    decodeWorkload = { ...spec.workload, batchSize: decodeBatchSize };
     // VRAM: when the solver passes a pdMode hint, use pool-specific seqLen
     // (prefill = inputLen only, decode = inputLen + outputLen/2) instead of
     // the default non-PD average. Without the hint, standard non-PD sizing.
