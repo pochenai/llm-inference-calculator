@@ -44,7 +44,9 @@ body {
 
 .app-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 4px 0 18px;
 }
@@ -59,6 +61,18 @@ body {
 .app-sub {
   color: var(--muted);
   font-size: 12.5px;
+}
+
+.app-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 /* GitHub link in the right-aligned header group */
@@ -90,13 +104,12 @@ body {
 
 /* Locale selector — pushed to the right, gh-link follows */
 .locale-select {
-  margin-left: auto;
-  padding: 4px 8px;
+  padding: 2px 6px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--panel);
   color: var(--text);
-  font-size: 12px;
+  font-size: 12.5px;
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
