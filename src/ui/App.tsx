@@ -2,6 +2,7 @@
 // All computation runs client-side against the pure core (src/core).
 
 import { useEffect, useMemo, useState } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { ALL_MODELS, MODEL_SIZE_TIER, SIZE_TIERS } from '../data/models';
 import { ALL_GPUS } from '../data/gpus/nvidia';
 import { INTRA_NODES_CONNECTION, INTER_NODES_CONNECTION } from '../data/network';
@@ -108,6 +109,7 @@ export default function App() {
   return (
     <LocaleProvider>
       <AppContent />
+      <Analytics />
     </LocaleProvider>
   );
 }
