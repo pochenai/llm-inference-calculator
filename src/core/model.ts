@@ -136,9 +136,9 @@ export function nonExpertParamsB(model: ModelSpec): number {
 }
 
 export interface DerivedConstants {
-  totalParams: number; // raw param count (MoE: all experts)
-  activeParams: number; // active per token
-  nonExpertParams: number; // not sharded by EP
+  totalParams: number; // raw param count (MoE: all experts + n-gram)
+  activeParams: number; // active per token (excludes n-gram)
+  nonExpertParams: number; // not sharded by EP (includes n-gram)
   expertParams: number; // routed experts, sharded by EP
   wBytesTotal: number;
   wNonexpertBytes: number;
@@ -157,10 +157,13 @@ export function deriveConstants(
   const bW = BYTES_PER_PARAM[weightQuant];
   const bKv = BYTES_PER_PARAM[kvQuant];
 
-  const totalParams = model.paramsB * 1e9;
+  const ngramParams = (model.ngramParamsB ?? 0) * 1e9;
+  const transformerParams = model.paramsB * 1e9;
+  const totalParams = transformerParams + ngramParams;
   const activeParams = (model.moe?.activeParamsB ?? model.paramsB) * 1e9;
-  const nonExpertParams = nonExpertParamsB(model) * 1e9;
-  const expertParams = totalParams - nonExpertParams;
+  const transformerNonExpert = nonExpertParamsB(model) * 1e9;
+  const nonExpertParams = transformerNonExpert + ngramParams;
+  const expertParams = transformerParams - transformerNonExpert;
 
   return {
     totalParams,

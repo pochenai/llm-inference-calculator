@@ -45,6 +45,7 @@ export interface ModelSpec {
   slidingWindow?: number; // per-layer KV token cap for local layers
   globalKvHeads?: number; // KV heads of global layers when they differ from local
   globalHeadDim?: number;
+  ngramParamsB?: number; // N-gram module params (not transformer; adds to VRAM but not FLOPs)
   maxCtx: number;
   hf?: string; // HuggingFace model URL
 }

@@ -56,4 +56,6 @@ export const MODELS_6B: Record<string, ModelSpec> = {
   santacoder_1b: { "id": "santacoder_1b", "name": "SantaCoder 1.1B", "type": "dense", "paramsB": 1.1, "layers": 24, "hiddenSize": 2048, "kvHeads": 1, "headDim": 128, "maxCtx": 2048, "hf": "https://huggingface.co/bigcode/santacoder" },
   bloom_3b: { "id": "bloom_3b", "name": "BLOOM 3B", "type": "dense", "paramsB": 3, "layers": 30, "hiddenSize": 2560, "kvHeads": 32, "headDim": 64, "maxCtx": 2048, "hf": "https://huggingface.co/bigscience/bloom-3b" },
   bloom_1b: { "id": "bloom_1b", "name": "BLOOM 1.1B", "type": "dense", "paramsB": 1.1, "layers": 24, "hiddenSize": 1536, "kvHeads": 16, "headDim": 64, "maxCtx": 2048, "hf": "https://huggingface.co/bigscience/bloom-1b1" },
+  qwen3_0_6b: { "id": "qwen3_0_6b", "name": "Qwen3 0.6B", "type": "dense", "paramsB": 0.6, "layers": 28, "hiddenSize": 1024, "kvHeads": 2, "headDim": 128, "maxCtx": 40960, "hf": "https://huggingface.co/Qwen/Qwen3-0.6B" },
+  qwen3_1_7b: { "id": "qwen3_1_7b", "name": "Qwen3 1.7B", "type": "dense", "paramsB": 1.7, "layers": 28, "hiddenSize": 2048, "kvHeads": 8, "headDim": 128, "maxCtx": 40960, "hf": "https://huggingface.co/Qwen/Qwen3-1.7B" },
 };
