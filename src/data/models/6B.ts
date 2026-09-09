@@ -3,8 +3,8 @@ import type { ModelSpec } from '../../core/types';
 
 export const MODELS_6B: Record<string, ModelSpec> = {
   gemma4_e2b: { "id": "gemma4_e2b", "name": "Gemma 4 E2B (5.1B)", "type": "dense", "paramsB": 5.1, "layers": 35, "hiddenSize": 1536, "kvHeads": 1, "headDim": 256, "maxCtx": 131072, "localLayers": 28, "slidingWindow": 512, "globalHeadDim": 512, "hf": "https://huggingface.co/google/gemma-4-e2b-it" },
-  qwen35_4b: { "id": "qwen35_4b", "name": "Qwen3.5 4B", "type": "dense", "paramsB": 4, "layers": 32, "hiddenSize": 2560, "kvHeads": 4, "headDim": 256, "maxCtx": 262144, "hf": "https://huggingface.co/Qwen/Qwen3.5-4B" },
-  qwen35_2b: { "id": "qwen35_2b", "name": "Qwen3.5 2B", "type": "dense", "paramsB": 2, "layers": 24, "hiddenSize": 2048, "kvHeads": 2, "headDim": 256, "maxCtx": 262144, "hf": "https://huggingface.co/Qwen/Qwen3.5-2B" },
+  qwen35_4b: { "id": "qwen35_4b", "name": "Qwen3.5 4B", "type": "dense", "paramsB": 4, "layers": 32, "hiddenSize": 2560, "kvHeads": 4, "headDim": 256, "maxCtx": 262144, "linearAttentionLayers": 24, "hf": "https://huggingface.co/Qwen/Qwen3.5-4B" },
+  qwen35_2b: { "id": "qwen35_2b", "name": "Qwen3.5 2B", "type": "dense", "paramsB": 2, "layers": 24, "hiddenSize": 2048, "kvHeads": 2, "headDim": 256, "maxCtx": 262144, "linearAttentionLayers": 18, "hf": "https://huggingface.co/Qwen/Qwen3.5-2B" },
   translategemma_4b: { "id": "translategemma_4b", "name": "TranslateGemma 4B", "type": "dense", "paramsB": 4.3, "layers": 34, "hiddenSize": 2560, "kvHeads": 4, "headDim": 256, "maxCtx": 131072, "localLayers": 29, "slidingWindow": 1024, "hf": "https://huggingface.co/google/translategemma-4b-it" },
   ministral_3_3b: { "id": "ministral_3_3b", "name": "Ministral 3 (3B)", "type": "dense", "paramsB": 3, "layers": 26, "hiddenSize": 3072, "kvHeads": 8, "headDim": 128, "maxCtx": 131072, "hf": "https://huggingface.co/mistralai/Ministral-3-3B" },
   smollm3_3b: { "id": "smollm3_3b", "name": "SmolLM3 3B", "type": "dense", "paramsB": 3, "layers": 36, "hiddenSize": 2048, "kvHeads": 4, "headDim": 128, "maxCtx": 65536, "hf": "https://huggingface.co/HuggingFaceTB/SmolLM3-3B" },
