@@ -238,7 +238,7 @@ describe('latency model (ideal values)', () => {
     expect(withAlpha.decode.tpotMs - ideal.decode.tpotMs).toBeCloseTo(expectedExtraMs, 6);
   });
 
-  it('PD disaggregation with ideal overlap adds zero KV transfer time', () => {
+  it('PD disaggregation hides fully overlapped KV transfer', () => {
     const base = llama8xH100();
     const disagg = evaluate({
       ...base,
@@ -250,15 +250,31 @@ describe('latency model (ideal values)', () => {
         kvTransferOverlap: 1,
       },
     });
-    // With ideal overlap=1, KV transfer is fully hidden (adds 0 to TTFT).
+    // With ideal overlap=1, KV transfer is fully hidden from TTFT.
     expect(disagg.kvTransferExposedMs).toBe(0);
-    // PD prefill TTFT should be less than colocated (smaller prefill batch under
-    // steady-state workload split); decode TPOT should be in the same ballpark.
+    expect(disagg.ttftMs).toBe(disagg.prefill.ttftMs);
+  });
+
+  it('PD disaggregation lowers TTFT under steady-state load', () => {
+    const base = llama8xH100({
+      workload: { batchSize: 8, inputLen: 2048, outputLen: 512, prefillRatio: 0.5 },
+    });
+    const disagg = evaluate({
+      ...base,
+      disagg: {
+        prefillGpus: 8,
+        decodeGpus: 8,
+        prefillLayout: { tp: 8, pp: 1, ep: 1, dp: 1 },
+        decodeLayout: { tp: 8, pp: 1, ep: 1, dp: 1 },
+        kvTransferOverlap: 1,
+      },
+    });
     const colocated = evaluate(base);
+
+    expect(disagg.prefillBatchSize).toBe(4);
+    expect(disagg.decodeBatchSize).toBe(4);
     expect(disagg.ttftMs).toBeLessThan(colocated.ttftMs);
-    // Decode TPOT: same layout and similar batch size → should be comparable.
     expect(disagg.tpotMs).toBeGreaterThan(0);
-    // Verify optimal PD GPU allocation is computed.
     expect(disagg.optimalPrefillFraction).toBeDefined();
     expect(disagg.optimalPrefillFraction!).toBeGreaterThan(0);
     expect(disagg.optimalPrefillFraction!).toBeLessThan(1);

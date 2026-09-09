@@ -4,3 +4,6 @@ dist-ui/
 dist-demo/
 scripts/
 design/
+
+#
+graphify-out/
