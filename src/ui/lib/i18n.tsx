@@ -59,6 +59,13 @@ const translations = {
   },
   'label.flash_attention': { en: 'FlashAttention', zh: 'FlashAttention' },
   'desc.flash_attention': { en: 'When enabled, activation VRAM counted as O(N·h), avoiding N² attention matrix', zh: '开启后激活显存按 O(N·h) 计，避免 N² 注意力矩阵' },
+  'flashattention_prompt.title': { en: 'Trying FlashAttention?', zh: '想试试 FlashAttention 吗？' },
+  'flashattention_prompt.description': {
+    en: 'If this calculator is useful, star the project on GitHub. You can also continue straight to FlashAttention.',
+    zh: '如果这个计算器对你有帮助，欢迎到 GitHub 点个 Star；也可以直接继续启用 FlashAttention。',
+  },
+  'flashattention_prompt.continue': { en: 'Continue with FlashAttention', zh: '继续启用 FlashAttention' },
+  'flashattention_prompt.cancel': { en: 'Cancel', zh: '取消' },
   'label.pd_disagg': { en: 'PD Disaggregation (Prefill-Decode)', zh: 'PD 分离（Prefill-Decode Disaggregation）' },
   'desc.pd_disagg': { en: 'Prefill and Decode use separate GPU pools', zh: 'Prefill 与 Decode 使用独立 GPU 池' },
   'label.prefill_gpus': { en: 'Prefill GPU Count', zh: 'Prefill GPU 数' },
@@ -239,6 +246,31 @@ const translations = {
 
   // Batch sweep chart
   'title.batch_sweep': { en: 'Throughput & Latency vs Batch Size', zh: 'Throughput & Latency vs Batch Size' },
+  'github_cta.title': { en: 'Enjoying the calculator?', zh: '这个计算器对你有帮助吗？' },
+  'github_cta.description': {
+    en: 'If it’s useful, please star the project on GitHub. It helps others discover it.',
+    zh: '如果这个工具对你有帮助，欢迎到 GitHub 点个 Star，让更多人发现它。',
+  },
+  'github_cta.star': { en: 'Star on GitHub ↗', zh: '去 GitHub 点 Star ↗' },
+  'share.copy_link': { en: 'Copy share link', zh: '复制分享链接' },
+  'share.copy_summary': { en: 'Copy shareable result summary', zh: '复制可分享的结果摘要' },
+  'share.hint': {
+    en: 'The link restores this setup so others can reproduce the same estimate.',
+    zh: '分享链接会还原当前配置，方便别人复现这组估算结果。',
+  },
+  'share.copied': { en: 'Copied', zh: '已复制' },
+  'share.copy_fallback': { en: 'Copy this text', zh: '请复制以下内容' },
+  'share.summary': (params: { model: string; gpu: string; ttft: string; tpot: string; throughput: string; url: string }) => ({
+    en: `LLM Inference Calculator result\nModel: ${params.model}\nGPU: ${params.gpu}\nTTFT: ${params.ttft} · TPOT: ${params.tpot}\nThroughput: ${params.throughput}\nTry it: ${params.url}\nGitHub: https://github.com/pochenai/llm-inference-calculator`,
+    zh: `LLM 推理计算器结果\n模型：${params.model}\nGPU：${params.gpu}\nTTFT：${params.ttft} · TPOT：${params.tpot}\n吞吐：${params.throughput}\n试算：${params.url}\nGitHub：https://github.com/pochenai/llm-inference-calculator`,
+  }),
+  'details_gate.title': { en: 'Unlock the detailed results', zh: '解锁详细结果' },
+  'details_gate.description': {
+    en: 'Support this free tool with a GitHub star to continue to phase details and batch charts.',
+    zh: '如果这个免费工具对你有帮助，欢迎到 GitHub 点个 Star，再继续查看阶段明细和 batch 图表。',
+  },
+  'details_gate.star': { en: 'Open GitHub to star ↗', zh: '前往 GitHub 点 Star ↗' },
+  'details_gate.continue': { en: 'Continue to details', zh: '继续查看明细' },
   'note.no_feasible_batch': { en: 'No feasible batch under current config.', zh: '当前配置下没有可行的 batch。' },
   'label.batch_size_axis': { en: 'Batch Size', zh: 'Batch Size' },
   'label.throughput_axis': { en: 'Throughput', zh: 'Throughput' },

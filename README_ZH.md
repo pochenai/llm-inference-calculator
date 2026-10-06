@@ -52,6 +52,7 @@
 - **VRAM** 占用拆解（模型 / KV cache / 激活值 / draft model）
 - **Prefill** 和 **Decode** 吞吐、延迟、算力利用率和显存利用率
 - **Batch Sweep 图**：吞吐量 / 延迟随 batch size 的变化趋势
+- **结果分享**：配置会编码在 URL 中，可复制配置链接或带关键指标的结果摘要
 
 ---
 

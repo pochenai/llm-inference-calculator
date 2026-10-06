@@ -71,7 +71,7 @@ export const URL_DEFAULTS: UrlState = {
   batchSize: DEFAULT_BATCH_SIZE,
   prefillRatioOn: false,
   prefillRatio: DEFAULT_PREFILL_RATIO,
-  flashAttention: true,
+  flashAttention: false,
   disaggOn: false,
   prefillGpus: 1,
   decodeGpus: 1,

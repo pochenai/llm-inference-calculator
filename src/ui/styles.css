@@ -852,6 +852,208 @@ input[type='range'] {
   font-family: var(--mono);
 }
 
+/* ---------- result sharing and GitHub CTA ---------- */
+
+.result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.result-support,
+.result-share {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.result-support > span {
+  font-size: 20px;
+}
+
+.result-support > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.result-support p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.result-star-link {
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+.result-share {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.result-share-hint {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+@media (max-width: 520px) {
+  .result-support {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .result-star-link {
+    margin-left: 30px;
+  }
+
+.result-share .btn {
+    flex: 1;
+    padding-inline: 7px;
+  }
+}
+
+/* ---------- details unlock prompt ---------- */
+
+.details-gate {
+  position: relative;
+  isolation: isolate;
+}
+
+.details-gate-content {
+  filter: blur(3px);
+  opacity: 0.55;
+  user-select: none;
+  pointer-events: none;
+}
+
+.details-gate-overlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  border-radius: var(--radius);
+  background: rgba(244, 245, 247, 0.52);
+}
+
+.details-gate-prompt {
+  width: min(100%, 410px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.18);
+}
+
+.details-gate-prompt h3,
+.details-gate-prompt p {
+  margin: 0;
+}
+
+.details-gate-prompt p,
+.details-gate-prompt small {
+  color: var(--muted);
+}
+
+.details-gate-prompt small {
+  font-size: 11px;
+}
+
+.details-gate-prompt .details-gate-star {
+  font-size: 26px;
+}
+
+.details-gate-prompt .details-gate-link {
+  text-decoration: none;
+}
+
+.details-gate-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.details-gate-actions .btn {
+  align-self: auto;
+  white-space: nowrap;
+}
+
+.details-gate-prompt .details-gate-continue {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.details-gate-prompt .details-gate-continue:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.flashattention-modal-overlay {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.flashattention-modal {
+  width: min(100%, 440px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px;
+  text-align: center;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.25);
+}
+
+.flashattention-modal h2,
+.flashattention-modal p {
+  margin: 0;
+}
+
+.flashattention-modal p {
+  color: var(--muted);
+}
+
+.flashattention-modal .details-gate-star {
+  font-size: 26px;
+}
+
+.flashattention-modal .details-gate-link {
+  text-decoration: none;
+}
+
+.flashattention-modal .details-gate-continue {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.flashattention-modal .details-gate-continue:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.flashattention-cancel {
+  align-self: center;
+  padding: 2px 8px;
+}
+
 /* ---------- batch sweep chart ---------- */
 
 .sweep-chart {

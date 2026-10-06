@@ -2,7 +2,7 @@
 // All computation runs client-side against the pure core (src/core).
 
 import { useEffect, useMemo, useState } from 'react';
-import { Analytics } from '@vercel/analytics/react';
+import { Analytics, track } from '@vercel/analytics/react';
 import { ALL_MODELS, MODEL_SIZE_TIER, SIZE_TIERS } from '../data/models';
 import { ALL_GPUS } from '../data/gpus/nvidia';
 import { INTRA_NODES_CONNECTION, INTER_NODES_CONNECTION } from '../data/network';
@@ -60,6 +60,7 @@ import {
   DEFAULT_ACCEPTANCE_RATE,
 } from './lib/constants';
 import { useUrlState, writeLocaleToUrl } from './lib/useUrlParams';
+import { persistGithubSupportUnlocked, readGithubSupportUnlocked } from './lib/githubSupport';
 
 const QUANT_OPTIONS: { value: QuantPrecision; label: string; sub: string }[] = [
   { value: 'fp32', label: 'FP32', sub: '4 Bytes' },
@@ -130,6 +131,9 @@ function AppContent() {
 
   // UI-only state (not persisted in URL)
   const [calOpen, setCalOpen] = useState(false);
+  const [flashAttentionPromptOpen, setFlashAttentionPromptOpen] = useState(false);
+  const [flashAttentionGithubClicked, setFlashAttentionGithubClicked] = useState(false);
+  const [githubSupportUnlocked, setGithubSupportUnlocked] = useState(readGithubSupportUnlocked);
 
   // Convenience setters that patch individual fields.
   const setModelId = (v: string) => setState((s) => ({ ...s, modelId: v }));
@@ -146,6 +150,33 @@ function AppContent() {
     setState((s) => ({ ...s, prefillRatio: typeof v === 'function' ? v(s.prefillRatio) : v }));
   const setPrefillRatioOn = (v: boolean) => setState((s) => ({ ...s, prefillRatioOn: v }));
   const setFlashAttention = (v: boolean) => setState((s) => ({ ...s, flashAttention: v }));
+  function unlockGithubSupport() {
+    persistGithubSupportUnlocked();
+    setGithubSupportUnlocked(true);
+  }
+
+  function requestFlashAttentionChange(enabled: boolean) {
+    track('flashattention_toggle_clicked', { enabled });
+    if (!enabled) {
+      setFlashAttention(false);
+      return;
+    }
+    if (githubSupportUnlocked) {
+      setFlashAttention(true);
+      track('flashattention_enabled');
+      return;
+    }
+    setFlashAttentionGithubClicked(false);
+    setFlashAttentionPromptOpen(true);
+    track('flashattention_prompt_opened');
+  }
+
+  function continueWithFlashAttention() {
+    unlockGithubSupport();
+    setFlashAttention(true);
+    setFlashAttentionPromptOpen(false);
+    track('flashattention_enabled');
+  }
   const setDisaggOn = (v: boolean) => setState((s) => ({ ...s, disaggOn: v }));
   const setPrefillGpus = (v: number) => setState((s) => ({ ...s, prefillGpus: v }));
   const setDecodeGpus = (v: number) => setState((s) => ({ ...s, decodeGpus: v }));
@@ -759,7 +790,7 @@ function AppContent() {
                 label={t('label.flash_attention')}
                 desc={t('desc.flash_attention')}
                 checked={flashAttention}
-                onChange={setFlashAttention}
+                onChange={requestFlashAttentionChange}
               />
               {intOr(numGpus, 1, 1) >= MIN_GPUS_FOR_PD_DISAGG && (
                 <Toggle
@@ -1047,12 +1078,57 @@ function AppContent() {
               onPickPrefillLayout={setPrefillLayoutOverride}
               onPickDecodeLayout={setDecodeLayoutOverride}
               warnings={core.warnings}
+              githubSupportUnlocked={githubSupportUnlocked}
+              onGithubSupportUnlock={unlockGithubSupport}
             />
           ) : (
             <div className="card">{t('label.invalid_config')}</div>
           )}
         </main>
       </div>
+      {flashAttentionPromptOpen && (
+        <div className="flashattention-modal-overlay">
+          <section
+            className="flashattention-modal card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="flashattention-modal-title"
+          >
+            <span className="details-gate-star" aria-hidden="true">⭐</span>
+            <h2 id="flashattention-modal-title">{t('flashattention_prompt.title')}</h2>
+            <p>{t('flashattention_prompt.description')}</p>
+            <div className="details-gate-actions">
+              <a
+                className="btn details-gate-link"
+                href="https://github.com/pochenai/llm-inference-calculator"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  setFlashAttentionGithubClicked(true);
+                  track('flashattention_github_clicked');
+                }}
+              >
+                {t('details_gate.star')}
+              </a>
+              <button
+                type="button"
+                className="btn details-gate-continue"
+                disabled={!flashAttentionGithubClicked}
+                onClick={continueWithFlashAttention}
+              >
+                {t('flashattention_prompt.continue')}
+              </button>
+            </div>
+            <button
+              type="button"
+              className="linklike flashattention-cancel"
+              onClick={() => setFlashAttentionPromptOpen(false)}
+            >
+              {t('flashattention_prompt.cancel')}
+            </button>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

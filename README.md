@@ -52,6 +52,7 @@
 - **VRAM** breakdown (model / KV cache / activation / draft model)
 - **Prefill** and **Decode** throughput, latency, compute utilization, and memory utilization
 - **Batch Sweep chart**: Throughput and latency trends across batch sizes
+- **Shareable results**: Copy a scenario URL or a result summary with key metrics
 
 ---
 

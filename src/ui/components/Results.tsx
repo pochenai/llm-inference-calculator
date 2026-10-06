@@ -1,6 +1,8 @@
 // Right-hand results panel: status, headline metrics, layout, VRAM, phase details.
 
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { track } from '@vercel/analytics/react';
 import type { EvaluationResult } from '../../core/metrics';
 import type { Result } from '../../core/errors';
 import type { GpuSpec, ModelSpec, ParallelLayout, SystemSpec } from '../../core/types';
@@ -13,6 +15,116 @@ import { useI18n } from '../lib/i18n';
 const BatchSweepChart = lazy(async () => ({
   default: (await import('./BatchSweepChart')).BatchSweepChart,
 }));
+
+function DetailsGate({
+  children,
+  unlocked,
+  onUnlock,
+}: {
+  children: ReactNode;
+  unlocked: boolean;
+  onUnlock: () => void;
+}) {
+  const { t } = useI18n();
+  const [openedGithub, setOpenedGithub] = useState(false);
+
+  function continueToDetails() {
+    onUnlock();
+    track('details_gate_unlocked');
+  }
+
+  return (
+    <div className="details-gate">
+      <div className={unlocked ? undefined : 'details-gate-content'}>{children}</div>
+      {!unlocked && (
+        <div className="details-gate-overlay">
+          <section className="details-gate-prompt" aria-labelledby="details-gate-title">
+            <span className="details-gate-star" aria-hidden="true">⭐</span>
+            <h3 id="details-gate-title">{t('details_gate.title')}</h3>
+            <p>{t('details_gate.description')}</p>
+            <div className="details-gate-actions">
+              <a
+                className="btn details-gate-link"
+                href="https://github.com/pochenai/llm-inference-calculator"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  setOpenedGithub(true);
+                  track('details_gate_github_clicked');
+                }}
+              >
+                {t('details_gate.star')}
+              </a>
+              <button
+                type="button"
+                className="btn details-gate-continue"
+                disabled={!openedGithub}
+                onClick={continueToDetails}
+              >
+                {t('details_gate.continue')}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultActions({ model, gpu, r }: { model: ModelSpec; gpu: GpuSpec; r: EvaluationResult }) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState<'link' | 'summary' | null>(null);
+
+  async function copyText(value: string, kind: 'link' | 'summary') {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(kind);
+      window.setTimeout(() => setCopied(null), 1800);
+      track(kind === 'link' ? 'scenario_link_copied' : 'result_summary_copied');
+    } catch {
+      window.prompt(t('share.copy_fallback'), value);
+    }
+  }
+
+  const summary = t('share.summary', {
+    model: model.name,
+    gpu: gpu.name,
+    ttft: fmtMs(r.ttftMs),
+    tpot: fmtMs(r.tpotMs),
+    throughput: `${fmtTps(r.throughputTps)} tok/s`,
+    url: window.location.href,
+  });
+
+  return (
+    <div className="result-actions card">
+      <div className="result-support">
+        <span aria-hidden="true">⭐</span>
+        <div>
+          <strong>{t('github_cta.title')}</strong>
+          <p>{t('github_cta.description')}</p>
+        </div>
+        <a
+          className="btn result-star-link"
+          href="https://github.com/pochenai/llm-inference-calculator"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => track('github_star_link_clicked')}
+        >
+          {t('github_cta.star')}
+        </a>
+      </div>
+      <div className="result-share">
+        <button type="button" className="btn" onClick={() => void copyText(window.location.href, 'link')}>
+          {copied === 'link' ? t('share.copied') : t('share.copy_link')}
+        </button>
+        <button type="button" className="btn" onClick={() => void copyText(summary, 'summary')}>
+          {copied === 'summary' ? t('share.copied') : t('share.copy_summary')}
+        </button>
+      </div>
+      <p className="result-share-hint">{t('share.hint')}</p>
+    </div>
+  );
+}
 
 export interface ResultsProps {
   model: ModelSpec;
@@ -32,6 +144,8 @@ export interface ResultsProps {
   onPickPrefillLayout: (l: ParallelLayout | null) => void;
   onPickDecodeLayout: (l: ParallelLayout | null) => void;
   warnings: string[];
+  githubSupportUnlocked: boolean;
+  onGithubSupportUnlock: () => void;
 }
 
 function layoutLabel(l: ParallelLayout): string {
@@ -45,6 +159,14 @@ function sameLayout(a: ParallelLayout, b: ParallelLayout): boolean {
 export function Results(props: ResultsProps) {
   const { result } = props;
   const { t } = useI18n();
+  const trackedResultView = useRef(false);
+
+  useEffect(() => {
+    if (result.ok && !trackedResultView.current) {
+      trackedResultView.current = true;
+      track('results_viewed', { feasible: result.value.feasible });
+    }
+  }, [result]);
 
   if (!result.ok) {
     return (
@@ -61,19 +183,25 @@ export function Results(props: ResultsProps) {
     <>
       <StatusBanner {...props} r={r} />
       <MetricTiles r={r} />
+      <ResultActions model={props.model} gpu={props.gpu} r={r} />
       <LayoutCard {...props} />
       <VramCard {...props} r={r} />
-      <PhaseCard r={r} model={props.model} spec={props.spec} disaggOn={props.disaggOn} />
-      {r.speculative && <SpeculativeCard speculative={r.speculative} />}
-      <Suspense
-        fallback={
-          <div className="card">
-            <div className="muted small">{t('label.loading_chart')}</div>
-          </div>
-        }
+      <DetailsGate
+        unlocked={props.githubSupportUnlocked}
+        onUnlock={props.onGithubSupportUnlock}
       >
-        <BatchSweepChart spec={props.spec} cal={props.cal} />
-      </Suspense>
+        <PhaseCard r={r} model={props.model} spec={props.spec} disaggOn={props.disaggOn} />
+        {r.speculative && <SpeculativeCard speculative={r.speculative} />}
+        <Suspense
+          fallback={
+            <div className="card">
+              <div className="muted small">{t('label.loading_chart')}</div>
+            </div>
+          }
+        >
+          <BatchSweepChart spec={props.spec} cal={props.cal} />
+        </Suspense>
+      </DetailsGate>
       <Warnings {...props} />
     </>
   );
