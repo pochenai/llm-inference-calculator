@@ -61,8 +61,8 @@ const translations = {
   'desc.flash_attention': { en: 'When enabled, activation VRAM counted as O(N·h), avoiding N² attention matrix', zh: '开启后激活显存按 O(N·h) 计，避免 N² 注意力矩阵' },
   'flashattention_prompt.title': { en: 'Trying FlashAttention?', zh: '想试试 FlashAttention 吗？' },
   'flashattention_prompt.description': {
-    en: 'If this calculator is useful, star the project on GitHub. You can also continue straight to FlashAttention.',
-    zh: '如果这个计算器对你有帮助，欢迎到 GitHub 点个 Star；也可以直接继续启用 FlashAttention。',
+    en: 'If this calculator is useful, please star the project on GitHub, then continue to enable FlashAttention.',
+    zh: '如果这个计算器对你有帮助，欢迎先到 GitHub 给项目点个 Star，再继续启用 FlashAttention。',
   },
   'flashattention_prompt.continue': { en: 'Continue with FlashAttention', zh: '继续启用 FlashAttention' },
   'flashattention_prompt.cancel': { en: 'Cancel', zh: '取消' },
